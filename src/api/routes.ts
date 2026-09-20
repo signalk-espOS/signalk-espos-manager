@@ -9,7 +9,9 @@
  */
 
 import type { ManagerService } from "../service.js";
-import { PLUGIN_ID } from "../config.js";
+import { PLUGIN_ID, PUBLIC_FW_BASE } from "../config.js";
+import { configureOta } from "../ota/configure.js";
+import { DeviceClient } from "../device/client.js";
 import { serializeDevice, serializeFleet } from "./serialize.js";
 
 interface ResponseLike {
@@ -135,6 +137,81 @@ export function registerRoutes(
           res.json({ ok: true, auth: service.fleet.get(id)?.auth });
         } catch (error) {
           res.status(500).json({ error: errorMessage(error) });
+        }
+      })();
+    }),
+  );
+
+  // GET /api/mirror — what firmware is cached and whether devices can reach it.
+  readonly.get(
+    "/api/mirror",
+    guard((_req, res) => {
+      void (async () => {
+        try {
+          const service = getService();
+          const status = service.getMirrorStatus();
+          const store = service.getStore();
+          const files = store === undefined ? [] : await store.list();
+          res.json({
+            ...status,
+            cachedBytes: files.reduce((sum, f) => sum + f.sizeBytes, 0),
+            files: files.map((f) => ({
+              app: f.app,
+              version: f.version,
+              filename: f.filename,
+              sizeBytes: f.sizeBytes,
+            })),
+          });
+        } catch (error) {
+          res.status(500).json({ error: errorMessage(error) });
+        }
+      })();
+    }),
+  );
+
+  // POST /api/fleet/:id/configure-ota — point a device at this server.
+  router.post(
+    "/api/fleet/:id/configure-ota",
+    guard((req, res) => {
+      void (async () => {
+        try {
+          const id = req.params?.id ?? "";
+          const service = getService();
+          const device = service.fleet.get(id);
+          if (device === undefined) {
+            res.status(404).json({ error: `no device ${id}` });
+            return;
+          }
+          const app = device.snapshot?.app;
+          if (app === undefined) {
+            res.status(409).json({
+              error:
+                "this device has not reported which firmware it runs yet — " +
+                "wait for the next poll",
+            });
+            return;
+          }
+          const address = device.identity.addresses[0];
+          if (address === undefined) {
+            res.status(409).json({ error: "no address known for this device" });
+            return;
+          }
+          const settings = service.getSettings();
+          const keys = service.getKeys();
+          const client = new DeviceClient({
+            address,
+            port: device.identity.port,
+            key: keys?.keyFor(id),
+          });
+          const result = await configureOta({
+            client,
+            app,
+            channel: settings?.ota.channel ?? "stable",
+            publicBase: PUBLIC_FW_BASE,
+          });
+          res.json({ ok: true, ...result });
+        } catch (error) {
+          res.status(502).json({ error: errorMessage(error) });
         }
       })();
     }),

@@ -1,0 +1,130 @@
+{
+  "note": "Generated from the REAL espos_ota_version_cmp compiled from espOS components/espos_ota/src/manifest.c. Regenerate with test/fixtures/regenerate-vercmp.md if the firmware changes.",
+  "cases": [
+    {
+      "a": "1.2.10",
+      "b": "1.2.9",
+      "expected": 1
+    },
+    {
+      "a": "1.2.9",
+      "b": "1.2.10",
+      "expected": -1
+    },
+    {
+      "a": "1.1.0",
+      "b": "1.1.0",
+      "expected": 0
+    },
+    {
+      "a": "1.1.0-12-g44590ce",
+      "b": "1.1.0",
+      "expected": -1
+    },
+    {
+      "a": "1.1.0",
+      "b": "1.1.0-12-g44590ce",
+      "expected": 1
+    },
+    {
+      "a": "1.1.0-12-g44590ce-dirty",
+      "b": "1.1.0-3-g468d0f0-dirty",
+      "expected": -1
+    },
+    {
+      "a": "v1.2.0",
+      "b": "1.2.0",
+      "expected": 0
+    },
+    {
+      "a": "V1.2.0",
+      "b": "1.2.0",
+      "expected": 0
+    },
+    {
+      "a": "1.2.0.1",
+      "b": "1.2.0",
+      "expected": 1
+    },
+    {
+      "a": "1.2",
+      "b": "1.2.0",
+      "expected": 0
+    },
+    {
+      "a": "1",
+      "b": "1.0.0.0",
+      "expected": 0
+    },
+    {
+      "a": "0.2.0-3-gced7f3f-dirty",
+      "b": "0.2.0",
+      "expected": -1
+    },
+    {
+      "a": "1.2.0+build7",
+      "b": "1.2.0",
+      "expected": 0
+    },
+    {
+      "a": "1.2.0-rc1",
+      "b": "1.2.0-rc2",
+      "expected": -1
+    },
+    {
+      "a": "abc",
+      "b": "def",
+      "expected": -1
+    },
+    {
+      "a": "",
+      "b": "1.0.0",
+      "expected": -1
+    },
+    {
+      "a": "1.0.0",
+      "b": "",
+      "expected": 1
+    },
+    {
+      "a": "1.2.0-beta",
+      "b": "1.2.0-alpha",
+      "expected": 1
+    },
+    {
+      "a": "2.0.0",
+      "b": "10.0.0",
+      "expected": -1
+    },
+    {
+      "a": "1.1.0-dirty",
+      "b": "1.1.0-12-g44590ce",
+      "expected": 1
+    },
+    {
+      "a": "9999999999.0.0",
+      "b": "1.0.0",
+      "expected": 1
+    },
+    {
+      "a": "1.2.0.3.4",
+      "b": "1.2.0.3",
+      "expected": 0
+    },
+    {
+      "a": "1.0",
+      "b": "1.0.0.1",
+      "expected": -1
+    },
+    {
+      "a": "v",
+      "b": "v",
+      "expected": 0
+    },
+    {
+      "a": "1.1.0-12-g44590ce-dirty",
+      "b": "1.1.0",
+      "expected": -1
+    }
+  ]
+}

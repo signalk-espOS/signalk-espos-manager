@@ -6,7 +6,10 @@
  */
 
 import type { KeyStore } from "../device/auth.js";
+import { PUBLIC_FW_BASE } from "../config.js";
 import { isProvisionalId } from "../fleet/poller.js";
+import { manifestPathFor } from "../mirror/manifest.js";
+import { needsOtaRepair } from "../ota/configure.js";
 import type { DeviceRecord } from "../types.js";
 
 export interface DeviceDto {
@@ -35,6 +38,10 @@ export interface DeviceDto {
   otaState?: string;
   otaError?: string;
   manifestUrl?: string;
+  /** True when this device is looking for updates somewhere it cannot read. */
+  otaNeedsRepair?: boolean;
+  /** Plain-language reason, for the UI to show beside a repair button. */
+  otaRepairReason?: string;
   sources: string[];
 }
 
@@ -76,8 +83,47 @@ export function serializeDevice(
     otaState: snapshot?.ota?.state,
     otaError: snapshot?.ota?.lastError,
     manifestUrl: snapshot?.ota?.manifest?.url,
+    ...otaRepair(record),
     sources: Object.keys(record.identity.sources),
   };
+}
+
+/**
+ * Whether this device can actually reach an update manifest.
+ *
+ * Only decidable once we know which firmware it runs, because the expected
+ * path is per-application. A device that has not reported its app yet is left
+ * unflagged rather than accused.
+ */
+function otaRepair(record: DeviceRecord): {
+  otaNeedsRepair?: boolean;
+  otaRepairReason?: string;
+} {
+  const app = record.snapshot?.app;
+  const manifest = record.snapshot?.ota?.manifest;
+  if (app === undefined || manifest === undefined) return {};
+  const expected = manifestPathFor(app, PUBLIC_FW_BASE);
+  // The device reports the ASSEMBLED url, so compare on the path portion.
+  const reportedPath = pathOf(manifest.url);
+  const result = needsOtaRepair(
+    reportedPath === expected ? "signalk" : "url",
+    reportedPath,
+    manifest.url,
+    expected,
+  );
+  return result.needed
+    ? { otaNeedsRepair: true, otaRepairReason: result.reason }
+    : { otaNeedsRepair: false };
+}
+
+/** The path part of a URL, or the input when it is already a path. */
+function pathOf(url: string | undefined): string | undefined {
+  if (url === undefined || url === "") return url;
+  try {
+    return new URL(url).pathname;
+  } catch {
+    return url;
+  }
 }
 
 export interface FleetDto {

@@ -144,8 +144,37 @@ export class DeviceClient {
     await this.request("/ota/rollback", { method: "POST", body: {} });
   }
 
-  /** Partial config write; espOS merges the given namespaces. */
-  async putConfig(config: Record<string, unknown>): Promise<void> {
-    await this.request("/config", { method: "PUT", body: config });
+  /** Full device configuration, namespace by namespace. */
+  async getConfig(): Promise<Record<string, unknown>> {
+    const raw = await this.request("/config");
+    return typeof raw === "object" && raw !== null
+      ? (raw as Record<string, unknown>)
+      : {};
+  }
+
+  /**
+   * Merge configuration into the device.
+   *
+   * espOS calls `espos_config_import_json(..., ignore_unknown=false, ...)`, so
+   * this merges the namespaces given rather than replacing the config — but an
+   * unrecognised key fails the whole request with 400 and the offending path.
+   * The response says exactly what changed, which is better evidence than a
+   * 200 and a read-back.
+   */
+  async putConfig(
+    config: Record<string, unknown>,
+  ): Promise<{ changed: string[]; restartRequired: boolean }> {
+    const raw = await this.request("/config", { method: "PUT", body: config });
+    const body =
+      typeof raw === "object" && raw !== null
+        ? (raw as Record<string, unknown>)
+        : {};
+    const changed = Array.isArray(body.changed)
+      ? body.changed.filter((v): v is string => typeof v === "string")
+      : [];
+    return {
+      changed,
+      restartRequired: body.restart_required === true,
+    };
   }
 }
