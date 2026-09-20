@@ -91,3 +91,34 @@ describe("the writeFlash contract we depend on", () => {
     );
   });
 });
+
+describe("the loader methods we call actually exist", () => {
+  // A method name invented from memory typechecks fine behind a hand-written
+  // interface and fails only on hardware — and here it would have failed
+  // inside a catch, silently disabling the check that stops a 16 MB image
+  // reaching a 4 MB board. `getFlashSize` was exactly that mistake.
+  const dts = readFileSync(
+    new URL("../node_modules/esptool-js/lib/esploader.d.ts", import.meta.url),
+    "utf8",
+  );
+
+  it.each([
+    "main(",
+    "detectFlashSize(",
+    "flashSizeBytes(",
+    "writeFlash(",
+    "after(",
+  ])("ESPLoader declares %s", (member) => {
+    expect(dts).toContain(member);
+  });
+
+  it("does not declare getFlashSize, which was invented", () => {
+    expect(dts).not.toContain("getFlashSize");
+  });
+
+  it("detectFlashSize returns a string, not a byte count", () => {
+    // Returning the string straight into a byte comparison would make every
+    // fit check nonsense.
+    expect(dts).toMatch(/detectFlashSize\(\):\s*Promise<string>/);
+  });
+});

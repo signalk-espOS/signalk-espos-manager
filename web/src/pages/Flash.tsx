@@ -1,6 +1,7 @@
 import { useState } from "preact/hooks";
 import { useStore } from "../store.js";
 import {
+  activeConnection,
   connect,
   disconnect,
   serialSupport,
@@ -33,6 +34,27 @@ export function FlashPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | undefined>(undefined);
   const [finished, setFinished] = useState(false);
+  /** The image header, kept so the checks can re-run without refetching. */
+  const [head, setHead] = useState<Uint8Array | undefined>(undefined);
+
+  /**
+   * Boards the project declares for this build's chip.
+   *
+   * espOS matches firmware on chip alone, so when a project supports two
+   * incompatible boards behind one target the user has to say which they have
+   * — the wrong image is a black screen, not an error message.
+   */
+  const boardsForTarget = (
+    chosen: FlashBuild,
+  ): { id: string; name: string }[] => {
+    const project = (registry?.projects ?? []).find(
+      (p) => p.id === chosen.projectId,
+    ) as unknown as
+      { boards?: { id: string; name: string; target: string }[] } | undefined;
+    return (project?.boards ?? [])
+      .filter((b) => b.target === chosen.target)
+      .map((b) => ({ id: b.id, name: b.name }));
+  };
 
   // Only builds that ship a full-flash image can go on a blank board.
   const flashable: FlashBuild[] = (registry?.projects ?? []).flatMap(
@@ -91,6 +113,28 @@ export function FlashPage() {
     );
   }
 
+  /** Re-run the checks against the board already connected. */
+  const runChecks = (
+    chosen: FlashBuild,
+    imageHead: Uint8Array,
+    board: string | undefined,
+  ) => {
+    const connection = activeConnection();
+    setReport(
+      preflight({
+        detectedTarget: connection?.target,
+        buildTarget: chosen.target,
+        detectedFlashBytes: connection?.flashBytes,
+        imageBytes: chosen.mergedBytes ?? 0,
+        imageHead,
+        writeAddress: 0,
+        candidateBoards: boardsForTarget(chosen),
+        buildBoard: chosen.boardId,
+        chosenBoard: board,
+      }),
+    );
+  };
+
   const onConnect = async (chosen: FlashBuild) => {
     setError(undefined);
     setBusy(true);
@@ -104,20 +148,15 @@ export function FlashPage() {
       const head = await fetch(chosen.mergedUrl, {
         headers: { Range: "bytes=0-65535" },
       });
+      if (!head.ok) {
+        throw new Error(
+          `Could not read the firmware header: HTTP ${head.status}`,
+        );
+      }
       const imageHead = new Uint8Array(await head.arrayBuffer());
 
-      setReport(
-        preflight({
-          detectedTarget: connection.target,
-          buildTarget: chosen.target,
-          detectedFlashBytes: connection.flashBytes,
-          imageBytes: chosen.mergedBytes ?? 0,
-          imageHead,
-          writeAddress: 0,
-          buildBoard: chosen.boardId,
-          chosenBoard,
-        }),
-      );
+      setHead(imageHead);
+      runChecks(chosen, imageHead, chosenBoard);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -249,16 +288,22 @@ export function FlashPage() {
           )}
 
           {report?.needsChoice === true && (
-            <p class="small">
-              <button
-                onClick={() => {
-                  setChosenBoard("confirmed");
-                  void onConnect(build);
-                }}
-              >
-                I have checked which board this is
-              </button>
-            </p>
+            <div class="small">
+              <p class="muted">Which board is this?</p>
+              {boardsForTarget(build).map((board) => (
+                <button
+                  key={board.id}
+                  onClick={() => {
+                    setChosenBoard(board.id);
+                    // Re-check against the board already connected; calling
+                    // connect() again would reopen the port picker.
+                    if (head !== undefined) runChecks(build, head, board.id);
+                  }}
+                >
+                  {board.name}
+                </button>
+              ))}
+            </div>
           )}
 
           {build.unsigned === true && (

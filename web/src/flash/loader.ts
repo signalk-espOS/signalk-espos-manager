@@ -21,7 +21,10 @@ interface Transport {
 interface Loader {
   main(): Promise<string>;
   chip: { CHIP_NAME: string };
-  getFlashSize(): Promise<number>;
+  /** Returns a size string such as "16MB", not a byte count. */
+  detectFlashSize(): Promise<string>;
+  /** Converts that string to bytes. */
+  flashSizeBytes(flashSize: string): number;
   writeFlash(options: {
     fileArray: { data: Uint8Array; address: number }[];
     flashMode: string;
@@ -127,7 +130,13 @@ export async function connect(
 
   let flashBytes: number | undefined;
   try {
-    flashBytes = await loader.getFlashSize();
+    // detectFlashSize() answers with a string like "16MB"; flashSizeBytes()
+    // turns it into a number. There is no getFlashSize() — calling one would
+    // throw into the catch below and silently disable the fit check, which is
+    // the very thing that stops a 16 MB image reaching a 4 MB board.
+    const detected = await loader.detectFlashSize();
+    const bytes = loader.flashSizeBytes(detected);
+    if (Number.isFinite(bytes) && bytes > 0) flashBytes = bytes;
   } catch {
     // Not fatal: the fit check reports "unknown" and lets the write proceed.
   }
