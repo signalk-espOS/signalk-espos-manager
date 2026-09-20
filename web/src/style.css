@@ -1,0 +1,272 @@
+/*
+ * Deliberately plain: a boat screen is often small, sunlit and touched with
+ * wet fingers, so targets are large and contrast is high. Dark mode follows
+ * the device because a chart plotter at night should not be a torch.
+ */
+:root {
+  color-scheme: light dark;
+  --fg: #16181d;
+  --muted-fg: #5b6068;
+  --bg: #f6f7f9;
+  --card: #ffffff;
+  --line: #d9dde3;
+  --accent: #0b6fb3;
+  --ok: #1a7f4b;
+  --warn: #9a5b00;
+  --warn-bg: #fff6e5;
+  --off: #8b9098;
+  --error: #a4262c;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --fg: #e7e9ee;
+    --muted-fg: #a2a8b3;
+    --bg: #14161a;
+    --card: #1d2026;
+    --line: #2f343c;
+    --accent: #6cb8ec;
+    --ok: #4cc38a;
+    --warn: #e0a458;
+    --warn-bg: #2b2317;
+    --off: #767c86;
+    --error: #f07178;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font:
+    16px/1.5 system-ui,
+    -apple-system,
+    "Segoe UI",
+    sans-serif;
+}
+
+.shell {
+  max-width: 46rem;
+  margin: 0 auto;
+  padding: 1rem 1rem 3rem;
+}
+
+header {
+  margin-bottom: 1rem;
+}
+h1 {
+  font-size: 1.3rem;
+  margin: 0 0 0.75rem;
+}
+h2 {
+  font-size: 1.1rem;
+  margin: 0 0 0.5rem;
+}
+h3 {
+  font-size: 1rem;
+  margin: 0 0 0.5rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+/* Pills sit inside flex headings and lists; keep them off the text either way. */
+.pill {
+  margin-left: 0.15rem;
+}
+
+nav {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+button {
+  font: inherit;
+  padding: 0.55rem 0.9rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--card);
+  color: var(--fg);
+  cursor: pointer;
+  min-height: 44px; /* a wet fingertip */
+}
+button:hover {
+  border-color: var(--accent);
+}
+button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.tab.active {
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: 600;
+}
+button.link {
+  background: none;
+  border: none;
+  color: var(--accent);
+  padding: 0;
+  min-height: 0;
+  text-decoration: underline;
+}
+
+input[type="password"],
+input[type="text"] {
+  font: inherit;
+  padding: 0.55rem;
+  min-height: 44px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--card);
+  color: var(--fg);
+  width: 100%;
+  max-width: 20rem;
+  margin-bottom: 0.5rem;
+}
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 0.9rem;
+  margin-bottom: 0.75rem;
+}
+.card.warn {
+  border-color: var(--warn);
+  background: var(--warn-bg);
+}
+.card.error {
+  border-color: var(--error);
+  color: var(--error);
+  cursor: pointer;
+}
+.card.notice {
+  border-color: var(--accent);
+  cursor: pointer;
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+  flex-wrap: wrap;
+}
+.spacer {
+  flex: 1;
+}
+
+.muted {
+  color: var(--muted-fg);
+}
+.small {
+  font-size: 0.875rem;
+}
+.warn-text {
+  color: var(--warn);
+}
+.notes {
+  margin: 0.25rem 0;
+}
+
+.pill {
+  font-size: 0.75rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  color: var(--muted-fg);
+  white-space: nowrap;
+}
+.pill.ok {
+  color: var(--ok);
+  border-color: var(--ok);
+}
+.pill.warn {
+  color: var(--warn);
+  border-color: var(--warn);
+}
+.pill.busy {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.devices,
+.projects {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.device-main {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.15rem;
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: none;
+  padding: 0;
+}
+.device-name {
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.device-meta {
+  font-size: 0.9rem;
+}
+
+.dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  display: inline-block;
+  background: var(--off);
+}
+.dot.ok {
+  background: var(--ok);
+}
+.dot.warn {
+  background: var(--warn);
+}
+.dot.off {
+  background: var(--off);
+}
+
+.facts {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.25rem 1rem;
+  margin: 0;
+}
+.facts dt {
+  color: var(--muted-fg);
+  font-size: 0.9rem;
+}
+.facts dd {
+  margin: 0;
+}
+
+progress {
+  width: 100%;
+  height: 12px;
+}
+
+details {
+  margin-top: 0.75rem;
+}
+details button {
+  margin: 0.25rem 0.25rem 0 0;
+}
+
+a {
+  color: var(--accent);
+}

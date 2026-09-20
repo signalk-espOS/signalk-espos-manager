@@ -19,8 +19,8 @@
     "LICENSE"
   ],
   "scripts": {
-    "build": "tsc",
-    "test": "npm run typecheck:test && vitest run",
+    "build": "tsc && vite build",
+    "test": "npm run typecheck:test && npm run typecheck:web && vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
     "typecheck:test": "tsc --noEmit --project tsconfig.test.json",
@@ -29,7 +29,10 @@
     "format": "npm run prettier && npm run lint",
     "ci-lint": "eslint && prettier --check .",
     "prepare": "npm run build",
-    "prepublishOnly": "npm run build && npm test"
+    "prepublishOnly": "npm run build && npm test",
+    "build:web": "vite build",
+    "dev:web": "vite",
+    "typecheck:web": "tsc --noEmit --project web/tsconfig.json"
   },
   "keywords": [
     "signalk-node-server-plugin",
@@ -64,14 +67,19 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.63.0",
+    "@preact/preset-vite": "^2.10.6",
     "@signalk/server-api": "^2.32.0",
     "@types/node": "^22.0.0",
     "eslint": "^10.2.0",
     "eslint-config-prettier": "^10.1.8",
     "globals": "^17.12.0",
+    "preact": "^10.29.8",
     "prettier": "^3.8.1",
     "typescript": "^5.9.0",
     "typescript-eslint": "^8.69.0",
-    "vitest": "^4.1.10"
+    "vite": "^8.3.0",
+    "vitest": "^4.1.10",
+    "zustand": "^5.0.15"
   }
 }
