@@ -12,6 +12,7 @@ import { FleetPoller } from "./fleet/poller.js";
 import { FleetState } from "./fleet/state.js";
 import { publishFleetDeltas } from "./fleet/deltas.js";
 import { FirmwareStore } from "./mirror/store.js";
+import { RegistryClient, type IndexResult } from "./registry/client.js";
 import {
   ensureFirmwareLink,
   verifyMountServed,
@@ -25,6 +26,8 @@ export class ManagerService {
   private settings?: ManagerSettings;
   private started = false;
   private store?: FirmwareStore;
+  private registry?: RegistryClient;
+  private registryState?: IndexResult;
   private mirror: { mode: MirrorMode; reason?: string } = {
     mode: "upstream",
     reason: "not started",
@@ -52,6 +55,15 @@ export class ManagerService {
       this.keys = new KeyStore({ dataDir });
       await this.keys.load();
       this.keys.setFleetKey(settings.auth.fleetKey);
+
+      this.registry = new RegistryClient({
+        cacheDir: join(dataDir, "cache"),
+        indexUrl: settings.registry.indexUrl,
+        extraIndexUrls: settings.registry.extraIndexUrls,
+        log: (message) => {
+          this.app.debug(message);
+        },
+      });
 
       if (settings.mirror.enabled) {
         await this.startMirror(dataDir, settings);
@@ -103,6 +115,26 @@ export class ManagerService {
 
   getStore(): FirmwareStore | undefined {
     return this.store;
+  }
+
+  getRegistry(): RegistryClient | undefined {
+    return this.registry;
+  }
+
+  /** The registry as last read, including whether it came from cache. */
+  async getIndex(force = false): Promise<IndexResult> {
+    const client = this.registry;
+    if (client === undefined) {
+      return {
+        index: { schema: 1, projects: [] },
+        stale: true,
+        reason: "the plugin is not running",
+        warnings: [],
+      };
+    }
+    const maxAgeMs = (this.settings?.registry.refreshH ?? 12) * 3600 * 1000;
+    this.registryState = await client.getIndex({ maxAgeMs, force });
+    return this.registryState;
   }
 
   /** Whether firmware is served from here or devices are sent to GitHub. */

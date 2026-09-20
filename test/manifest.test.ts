@@ -21,6 +21,7 @@ import {
   manifestUrlFits,
   MAX_MANIFEST_BYTES,
   MAX_NOTES_BYTES,
+  summariseReleaseNotes,
   truncateBytes,
 } from "../src/mirror/manifest.js";
 import { PUBLIC_FW_BASE } from "../src/config.js";
@@ -314,5 +315,69 @@ describe("the manifest a real server served", () => {
       },
     ]);
     expect(JSON.parse(json)).toEqual(served);
+  });
+});
+
+describe("summariseReleaseNotes", () => {
+  // Real GitHub release bodies from dirkwa/espos-p4-cockpit. A raw body is
+  // markdown — headings, compare links, bullet lists — and the device stores
+  // 127 bytes, so an unprocessed body arrives as a truncated URL.
+  const bodies = JSON.parse(
+    readFileSync(
+      new URL("./fixtures/release-bodies.json", import.meta.url),
+      "utf8",
+    ),
+  ) as { tag: string; body: string }[];
+
+  it("produces a usable one-liner for every real release", () => {
+    for (const { tag, body } of bodies) {
+      const summary = summariseReleaseNotes(body);
+      expect(summary, `${tag} should summarise to something`).not.toBe("");
+      expect(summary, `${tag} must not be a bare URL`).not.toMatch(/^https?:/);
+      expect(summary, `${tag} must not keep markdown link syntax`).not.toMatch(
+        /\]\(/,
+      );
+      expect(
+        summary,
+        `${tag} must not start with a heading marker`,
+      ).not.toMatch(/^#/);
+    }
+  });
+
+  it("skips a release-please section label", () => {
+    // "## Added" is a section header, not a description of the release.
+    expect(
+      summariseReleaseNotes("## 1.2.0\n\n### Added\n\n* a real change here"),
+    ).toBe("a real change here");
+  });
+
+  it("skips a bare version heading", () => {
+    expect(summariseReleaseNotes("## v1.2.0 (2026-09-19)\n\nSomething")).toBe(
+      "Something",
+    );
+  });
+
+  it("unwraps a markdown link to its text", () => {
+    expect(
+      summariseReleaseNotes("* [see the diff](https://x.invalid) matters"),
+    ).toBe("see the diff matters");
+  });
+
+  it("returns empty for an empty or absent body", () => {
+    expect(summariseReleaseNotes(undefined)).toBe("");
+    expect(summariseReleaseNotes("")).toBe("");
+    expect(summariseReleaseNotes("\n\n##\n")).toBe("");
+  });
+
+  it("fits the device's notes budget after truncation", () => {
+    for (const { body } of bodies) {
+      const { manifest } = generateManifest("cockpit", [
+        build({ notes: summariseReleaseNotes(body) }),
+      ]);
+      const notes = manifest.builds[0]?.notes ?? "";
+      expect(Buffer.byteLength(notes, "utf8")).toBeLessThanOrEqual(
+        MAX_NOTES_BYTES,
+      );
+    }
   });
 });
