@@ -68,16 +68,19 @@ anywhere. With the mirror enabled, devices never contact the internet at all.
 | 2     | The web interface                                  | done  |
 | 3     | The browser USB flasher for new boards             | done  |
 
-### Not done yet
+The firmware list comes from the
+[espOS registry](https://github.com/signalk-espOS/registry), and boards can be
+flashed from the [hosted flasher](https://signalk-espos.github.io/signalk-espos-manager/flash/)
+when your server is on plain http (browsers only allow USB access from a
+secure page).
 
-- **Nothing has been flashed or updated on real hardware by this plugin.** The
-  paths are tested against the device's own parser and the flashing library's
-  own contracts, but a board has not been written to.
-- **The hosted flasher is not deployed.** Flashing over USB needs a secure
-  page, so a boat server on plain http links out to a hosted copy that does
-  not exist yet.
-- **The firmware registry is not published.** The plugin reads one; nobody is
-  serving it.
+### Not proven yet
+
+**No firmware has been written to a board by this plugin, and no device has
+been updated by it.** The code paths are tested against the device's own
+manifest parser and the flashing library's own contracts, and the hosted
+flasher has been driven in a browser — but the first real update and the first
+real flash are still worth watching rather than trusting.
 
 ## Licence
 
