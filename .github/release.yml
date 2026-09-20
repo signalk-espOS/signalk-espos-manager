@@ -1,0 +1,33 @@
+# Groups auto-generated release notes by PR label, so each release says what
+# changed without a hand-maintained CHANGELOG drifting from reality.
+changelog:
+  exclude:
+    labels:
+      - ignore-for-release
+  categories:
+    - title: Breaking changes
+      labels:
+        - breaking
+    - title: Features
+      labels:
+        - enhancement
+        - feature
+    - title: Fixes
+      labels:
+        - bug
+        - fix
+    - title: Devices and firmware
+      labels:
+        - firmware
+        - espos
+    - title: Documentation
+      labels:
+        - documentation
+    - title: Maintenance
+      labels:
+        - chore
+        - ci
+        - dependencies
+    - title: Other changes
+      labels:
+        - "*"
