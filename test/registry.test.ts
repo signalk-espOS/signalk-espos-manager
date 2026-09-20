@@ -331,6 +331,98 @@ describe("matchDevice", () => {
     expect(result.build?.otaUrl).toContain("7b.bin");
   });
 
+  it("refuses a board-agnostic build when boards share a chip", () => {
+    // Found by flashing a Waveshare Touch-LCD-X with the stock 7B release:
+    // black screen. The two panels use different controllers, geometries and
+    // backlight pins, and espOS matches an update on app+target+channel only
+    // — never on board — so the device accepts the wrong image happily. One
+    // unnamed binary plus several boards on a chip means we cannot know which
+    // it fits, and guessing costs a working panel.
+    const twoBoards: RegistryProject = {
+      ...cockpit,
+      boards: [
+        { id: "waveshare-p4-touch-7b", target: "esp32p4", name: "7B" },
+        { id: "waveshare-p4-touch-x", target: "esp32p4", name: "X" },
+      ],
+      releases: [
+        {
+          version: "1.2.0",
+          tag: "v1.2.0",
+          channel: "stable",
+          builds: [
+            { target: "esp32p4", otaUrl: "https://example.invalid/ota.bin" },
+          ],
+        },
+      ],
+    };
+    const result = matchDevice(twoBoards, { ...base, runningVersion: "1.1.0" });
+    expect(result.build).toBeUndefined();
+    expect(result.requiresUsb).toBe(true);
+    expect(result.reason).toMatch(/2 different boards/);
+    expect(result.reason).toMatch(/screen black/);
+  });
+
+  it("still offers a board-agnostic build when only one board uses the chip", () => {
+    // The ordinary case, and it must keep working: most projects support one
+    // board per chip and publish one binary for it.
+    const oneBoard: RegistryProject = {
+      ...cockpit,
+      boards: [{ id: "only", target: "esp32p4", name: "The only board" }],
+      releases: [
+        {
+          version: "1.2.0",
+          tag: "v1.2.0",
+          channel: "stable",
+          builds: [
+            { target: "esp32p4", otaUrl: "https://example.invalid/ota.bin" },
+          ],
+        },
+      ],
+    };
+    expect(
+      matchDevice(oneBoard, { ...base, runningVersion: "1.1.0" }).build
+        ?.version,
+    ).toBe("1.2.0");
+  });
+
+  it("offers a named build to the board it names, and not to the other", () => {
+    const named: RegistryProject = {
+      ...cockpit,
+      boards: [
+        { id: "waveshare-p4-touch-7b", target: "esp32p4", name: "7B" },
+        { id: "waveshare-p4-touch-x", target: "esp32p4", name: "X" },
+      ],
+      releases: [
+        {
+          version: "1.3.0",
+          tag: "v1.3.0",
+          channel: "stable",
+          builds: [
+            {
+              target: "esp32p4",
+              boardId: "waveshare-p4-touch-x",
+              otaUrl: "https://example.invalid/x.bin",
+            },
+          ],
+        },
+      ],
+    };
+    expect(
+      matchDevice(named, {
+        ...base,
+        board: "waveshare-p4-touch-x",
+        runningVersion: "1.1.0",
+      }).build?.version,
+    ).toBe("1.3.0");
+    expect(
+      matchDevice(named, {
+        ...base,
+        board: "waveshare-p4-touch-7b",
+        runningVersion: "1.1.0",
+      }).build,
+    ).toBeUndefined();
+  });
+
   it("declines when only other boards have builds", () => {
     // Two incompatible panels behind one target: the wrong image is a black
     // screen, so no build is better than a guess.
