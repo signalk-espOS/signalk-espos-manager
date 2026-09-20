@@ -12,6 +12,7 @@ import type { ManagerService } from "../service.js";
 import { PLUGIN_ID, PUBLIC_FW_BASE } from "../config.js";
 import { configureOta } from "../ota/configure.js";
 import { matchDevice, projectForApp } from "../registry/resolve.js";
+import { summariseReleaseNotes } from "../mirror/manifest.js";
 import { DeviceClient } from "../device/client.js";
 import { serializeDevice, serializeFleet } from "./serialize.js";
 
@@ -253,6 +254,17 @@ export function registerRoutes(
             keyFp: device.snapshot?.ota?.running?.keyFp,
             includePrerelease: settings?.registry.includePrerelease,
           });
+          // A release body is markdown — headings, commit links, bullet lists.
+          // Rendered raw it buries the page (seen in the browser check), so
+          // the same one-line summary the device gets is what the UI shows,
+          // with the full notes a click away.
+          const build =
+            match.build === undefined
+              ? undefined
+              : {
+                  ...match.build,
+                  notes: summariseReleaseNotes(match.build.notes),
+                };
           res.json({
             project: {
               id: project.id,
@@ -261,6 +273,7 @@ export function registerRoutes(
               official: project.official === true,
             },
             ...match,
+            build,
           });
         } catch (error) {
           res.status(500).json({ error: errorMessage(error) });

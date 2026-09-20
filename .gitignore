@@ -1,5 +1,9 @@
 node_modules/
 dist/
+public/app.js
+public/app.css
+public/index.html
+public/fw
 *.log
 *.tgz
 .DS_Store
