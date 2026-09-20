@@ -12,7 +12,7 @@
  *   (`espos.cockpit.*`), which only yields an id when the hostname is still
  *   the default `espos-<id>`.
  * - The short id equals the last two bytes of the base MAC
- *   (`30:ed:a0:e3:2b:e9` -> `2be9`), which gives a free consistency check.
+ *   (`aa:bb:cc:dd:2b:e9` -> `2be9`), which gives a free consistency check.
  */
 
 import type {
