@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>espOS Manager</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        --fg: #1a1a1a;
+        --bg: #ffffff;
+        --muted: #5a5a5a;
+        --accent: #0b6fb3;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --fg: #e8e8e8;
+          --bg: #161719;
+          --muted: #a0a0a0;
+          --accent: #6cb8ec;
+        }
+      }
+      body {
+        margin: 0;
+        padding: 2rem 1rem;
+        background: var(--bg);
+        color: var(--fg);
+        font:
+          16px/1.55 system-ui,
+          -apple-system,
+          sans-serif;
+      }
+      main {
+        max-width: 34rem;
+        margin: 0 auto;
+      }
+      h1 {
+        font-size: 1.4rem;
+        margin: 0 0 0.5rem;
+      }
+      p {
+        color: var(--muted);
+      }
+      a {
+        color: var(--accent);
+      }
+      code {
+        font-size: 0.9em;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>espOS Manager</h1>
+      <p>
+        The plugin is installed and this path is serving. The device list and
+        firmware store are not built yet — for now, manage the plugin from the
+        Signal K admin interface under <strong>Server &rarr; Plugin Config</strong>.
+      </p>
+      <p>
+        Devices fetch their firmware manifest from beneath this path, which is
+        why it is reachable without a login.
+      </p>
+      <p>
+        <a href="https://github.com/signalk-espOS/signalk-espos-manager"
+          >Project page</a
+        >
+      </p>
+    </main>
+  </body>
+</html>
