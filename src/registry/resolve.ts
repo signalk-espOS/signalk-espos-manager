@@ -97,9 +97,12 @@ function buildForTarget(
   target: Target | undefined,
   board: string | undefined,
 ): RegistryBuild | undefined {
-  const candidates = release.builds.filter(
-    (build) => target === undefined || build.target === target,
-  );
+  // No established target means no offer. Treating undefined as "anything
+  // matches" hands out whichever build happens to be listed first — a C6 image
+  // to a P4 — which is the guess this module exists to refuse. A device that
+  // has not reported its chip yet is asked again next poll.
+  if (target === undefined) return undefined;
+  const candidates = release.builds.filter((build) => build.target === target);
   if (candidates.length === 0) return undefined;
   // A build naming this exact board wins over a board-agnostic one.
   const exact = candidates.find(

@@ -171,6 +171,35 @@ describe("matchDevice", () => {
     expect(with_.build?.version).toBe("1.3.0-beta.1");
   });
 
+  it("offers nothing when the device has not reported its chip", () => {
+    // Review finding: an undefined target matched every build, so a device
+    // that had not reported its chip was handed whichever build was listed
+    // first — a C6 image to a P4. The guess this module exists to refuse.
+    const multi: RegistryProject = {
+      ...cockpit,
+      targets: ["esp32c6", "esp32p4"],
+      releases: [
+        {
+          version: "2.0.0",
+          tag: "v2.0.0",
+          channel: "stable",
+          builds: [
+            { target: "esp32c6", otaUrl: "https://example.invalid/c6.bin" },
+            { target: "esp32p4", otaUrl: "https://example.invalid/p4.bin" },
+          ],
+        },
+      ],
+    };
+    const result = matchDevice(multi, {
+      app: "cockpit",
+      target: undefined,
+      channel: "stable",
+      runningVersion: "1.0.0",
+    });
+    expect(result.build).toBeUndefined();
+    expect(result.reason).toMatch(/has not reported which chip/);
+  });
+
   it("declines a target the project does not build", () => {
     const result = matchDevice(cockpit, {
       ...base,
@@ -471,6 +500,36 @@ describe("RegistryClient", () => {
     const cached = await client.getIndex({ maxAgeMs: 60_000 });
     expect(cached.stale).toBe(false);
     expect(cached.index.projects).toHaveLength(2);
+  });
+
+  it("keeps separate caches for different index URLs", async () => {
+    // Review finding: a 32-bit rolling hash could collide, and two colliding
+    // index URLs would each serve the other's projects — a wrong answer, not a
+    // slow one.
+    const urlA = await serveIndex({
+      schema: 1,
+      projects: [{ ...cockpit, id: "from-a", app: "app_a" }],
+    });
+    const clientA = new RegistryClient({ cacheDir, indexUrl: urlA });
+    const a = await clientA.getIndex();
+    expect(a.index.projects[0]?.id).toBe("from-a");
+
+    await new Promise<void>((r) => server?.close(() => r()));
+    server = undefined;
+
+    const urlB = await serveIndex({
+      schema: 1,
+      projects: [{ ...cockpit, id: "from-b", app: "app_b" }],
+    });
+    const clientB = new RegistryClient({ cacheDir, indexUrl: urlB });
+    const b = await clientB.getIndex();
+    expect(b.index.projects[0]?.id).toBe("from-b");
+
+    // A's cache is untouched by B: still readable offline, still A's data.
+    await new Promise<void>((r) => server?.close(() => r()));
+    server = undefined;
+    const aAgain = await clientA.getIndex({ force: true });
+    expect(aAgain.index.projects[0]?.id).toBe("from-a");
   });
 
   it("treats a server error as a fallback, not a crash", async () => {

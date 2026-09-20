@@ -11,6 +11,7 @@
  * project's releases into the index so the plugin never calls the GitHub API.
  */
 
+import { createHash } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { mergeIndexes } from "./resolve.js";
@@ -103,15 +104,13 @@ export class RegistryClient {
   }
 
   private cachePath(url: string): string {
-    // One cache file per URL, named from a hash so any URL is filesystem-safe.
-    let hash = 0;
-    for (let i = 0; i < url.length; i += 1) {
-      hash = (hash * 31 + url.charCodeAt(i)) | 0;
-    }
-    return join(
-      this.options.cacheDir,
-      `registry-${(hash >>> 0).toString(16)}.json`,
-    );
+    // One cache file per URL, named from a SHA-256 prefix so any URL is
+    // filesystem-safe. A 32-bit rolling hash was not good enough: two
+    // configured index URLs that collided would share a cache entry and each
+    // would serve the other's projects, which is a wrong answer rather than a
+    // slow one.
+    const digest = createHash("sha256").update(url, "utf8").digest("hex");
+    return join(this.options.cacheDir, `registry-${digest.slice(0, 32)}.json`);
   }
 
   private async readCache(url: string): Promise<CacheEntry | undefined> {
