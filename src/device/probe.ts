@@ -180,6 +180,20 @@ async function enrich(
 ): Promise<void> {
   try {
     snapshot.info = await client.systemInfo();
+    // The board decides whether an update may be offered at all, and the
+    // firmware's own report is the authoritative one: espOS 0.10+ answers
+    // `hardware.board` with the string the image was built for (opts.board),
+    // which no amount of probing can otherwise discover -- IDF knows the chip,
+    // not what it is soldered to.
+    //
+    // Preferred over the mDNS hint rather than merged with it, because the TXT
+    // record does not carry a board at all today (v/app/espos/target/id/api/
+    // auth only), so the hint is a fallback for a future firmware that adds
+    // one, and for a device whose info we cannot read.
+    const reported = snapshot.info.hardware?.board;
+    if (reported !== undefined && reported !== "") {
+      snapshot.board = reported;
+    }
   } catch {
     // Older or busy firmware; ping already told us it is alive.
   }

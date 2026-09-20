@@ -12,6 +12,7 @@
 import { compareVersions, isReleaseVersion } from "../mirror/manifest.js";
 import type { AppName, Channel, Target } from "../types.js";
 import type {
+  RegistryBoard,
   RegistryBuild,
   RegistryIndex,
   RegistryProject,
@@ -48,6 +49,38 @@ export function targetFromAssetName(name: string): Target | undefined {
     if (pattern.test(lower)) return target;
   }
   return undefined;
+}
+
+/**
+ * The declared board id a device's own report names, or undefined.
+ *
+ * A device reports the string its firmware was built with
+ * (`hardware.board`); the registry keys builds by `id`. Only the explicit
+ * `reportedAs` mapping joins them, and it is compared EXACTLY. Matching on the
+ * display `name` instead would look like it worked -- the strings are similar
+ * -- and would eventually offer an image built for a different display,
+ * because names get edited for readability while `reportedAs` is a contract
+ * with the firmware.
+ *
+ * Whitespace is trimmed because it is invisible in a JSON file and a trailing
+ * space is a silent no-match; nothing else is normalised. Case is significant:
+ * two boards in one project could legitimately differ only in case, and
+ * folding it would make that pair ambiguous rather than distinct.
+ */
+export function boardIdFromReport(
+  boards: readonly RegistryBoard[] | undefined,
+  reported: string | undefined,
+): string | undefined {
+  if (reported === undefined) return undefined;
+  const wanted = reported.trim();
+  if (wanted === "") return undefined;
+  const hits = (boards ?? []).filter(
+    (board) =>
+      board.reportedAs !== undefined && board.reportedAs.trim() === wanted,
+  );
+  // Two boards claiming one reported string is a registry bug, and resolving
+  // it either way would be a guess about which display the device has.
+  return hits.length === 1 ? hits[0]?.id : undefined;
 }
 
 export interface MatchDeviceOptions {
@@ -164,11 +197,17 @@ export function matchDevice(
     (board) => board.target === options.target,
   ).length;
 
+  // options.board is what the DEVICE reported (a firmware-chosen name); builds
+  // are keyed by the registry's board id. Resolve one to the other through the
+  // explicit `reportedAs` mapping, and treat an unresolvable report as "board
+  // unknown" -- which withholds an ambiguous build instead of guessing.
+  const boardId = boardIdFromReport(project.boards, options.board);
+
   for (const release of ordered) {
     const build = buildForTarget(
       release,
       options.target,
-      options.board,
+      boardId,
       boardsOnTarget,
     );
     if (build === undefined) continue;
@@ -231,15 +270,24 @@ export function matchDevice(
   if (
     options.target !== undefined &&
     boardsOnTarget > 1 &&
-    options.board === undefined
+    boardId === undefined
   ) {
+    // A device that named a board nobody recognises needs a different action
+    // from one that named none: the first is a registry entry to add (or a
+    // typo in `reportedAs`), the second is firmware too old to say.
+    const unrecognised =
+      options.board !== undefined && options.board.trim() !== "";
     return {
       requiresUsb: true,
-      reason:
-        `${project.name} supports ${boardsOnTarget} different boards with the ` +
-        `${options.target} chip, and the published firmware does not say which ` +
-        `one it was built for. Installing the wrong one usually leaves the ` +
-        `screen black, so it is not offered over the air.`,
+      reason: unrecognised
+        ? `this device reports its board as "${options.board}", which no ` +
+          `${project.name} entry claims, so the right firmware for it cannot ` +
+          `be identified. Installing the wrong one usually leaves the screen ` +
+          `black, so it is not offered over the air.`
+        : `${project.name} supports ${boardsOnTarget} different boards with ` +
+          `the ${options.target} chip, and this device does not report which ` +
+          `one it is. Installing the wrong firmware usually leaves the screen ` +
+          `black, so it is not offered over the air.`,
     };
   }
 

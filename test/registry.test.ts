@@ -15,6 +15,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { parseIndex, RegistryClient } from "../src/registry/client.js";
 import {
+  boardIdFromReport,
   matchDevice,
   mergeIndexes,
   projectForApp,
@@ -304,6 +305,14 @@ describe("matchDevice", () => {
   it("prefers a build naming the device's board over a generic one", () => {
     const boards: RegistryProject = {
       ...cockpit,
+      boards: [
+        {
+          id: "waveshare-7b",
+          target: "esp32p4",
+          name: "7B",
+          reportedAs: "Waveshare ESP32-P4-WIFI6-Touch-LCD-7B",
+        },
+      ],
       releases: [
         {
           version: "1.4.0",
@@ -325,7 +334,7 @@ describe("matchDevice", () => {
     };
     const result = matchDevice(boards, {
       ...base,
-      board: "waveshare-7b",
+      board: "Waveshare ESP32-P4-WIFI6-Touch-LCD-7B",
       runningVersion: "1.0.0",
     });
     expect(result.build?.otaUrl).toContain("7b.bin");
@@ -386,11 +395,24 @@ describe("matchDevice", () => {
   });
 
   it("offers a named build to the board it names, and not to the other", () => {
+    // options.board is what the DEVICE reports; the registry joins it to a
+    // board id through reportedAs. Passing an id here would not resolve --
+    // that is the point of the mapping.
     const named: RegistryProject = {
       ...cockpit,
       boards: [
-        { id: "waveshare-p4-touch-7b", target: "esp32p4", name: "7B" },
-        { id: "waveshare-p4-touch-x", target: "esp32p4", name: "X" },
+        {
+          id: "waveshare-p4-touch-7b",
+          target: "esp32p4",
+          name: "7B",
+          reportedAs: "Waveshare ESP32-P4-WIFI6-Touch-LCD-7B",
+        },
+        {
+          id: "waveshare-p4-touch-x",
+          target: "esp32p4",
+          name: "X",
+          reportedAs: "Waveshare ESP32-P4-WIFI6-Touch-LCD-X 7in",
+        },
       ],
       releases: [
         {
@@ -410,14 +432,14 @@ describe("matchDevice", () => {
     expect(
       matchDevice(named, {
         ...base,
-        board: "waveshare-p4-touch-x",
+        board: "Waveshare ESP32-P4-WIFI6-Touch-LCD-X 7in",
         runningVersion: "1.1.0",
       }).build?.version,
     ).toBe("1.3.0");
     expect(
       matchDevice(named, {
         ...base,
-        board: "waveshare-p4-touch-7b",
+        board: "Waveshare ESP32-P4-WIFI6-Touch-LCD-7B",
         runningVersion: "1.1.0",
       }).build,
     ).toBeUndefined();
@@ -656,5 +678,81 @@ describe("RegistryClient", () => {
     const result = await client.getIndex();
     expect(result.stale).toBe(true);
     expect(result.index.projects).toEqual([]);
+  });
+});
+
+describe("boardIdFromReport", () => {
+  const boards = [
+    {
+      id: "waveshare-p4-touch-7b",
+      target: "esp32p4" as const,
+      name: "Waveshare ESP32-P4-WIFI6-Touch-LCD-7B (1024x600)",
+      reportedAs: "Waveshare ESP32-P4-WIFI6-Touch-LCD-7B",
+    },
+    {
+      id: "waveshare-p4-touch-x-7",
+      target: "esp32p4" as const,
+      name: "Waveshare ESP32-P4-WIFI6-Touch-LCD-X, 7 inch (720x1280, rotated)",
+      reportedAs: "Waveshare ESP32-P4-WIFI6-Touch-LCD-X 7in",
+    },
+  ];
+
+  it("resolves the exact string a panel reports", () => {
+    // Verbatim from a live Touch-LCD-X running cockpit 1.3.0:
+    // /api/v1/system/info -> hardware.board
+    expect(
+      boardIdFromReport(boards, "Waveshare ESP32-P4-WIFI6-Touch-LCD-X 7in"),
+    ).toBe("waveshare-p4-touch-x-7");
+    expect(
+      boardIdFromReport(boards, "Waveshare ESP32-P4-WIFI6-Touch-LCD-7B"),
+    ).toBe("waveshare-p4-touch-7b");
+  });
+
+  it("does not match the display name, only reportedAs", () => {
+    // The names are similar enough that a fuzzy match would look correct and
+    // then hand a 10.1-inch panel a 7-inch image.
+    expect(
+      boardIdFromReport(
+        boards,
+        "Waveshare ESP32-P4-WIFI6-Touch-LCD-X, 7 inch (720x1280, rotated)",
+      ),
+    ).toBeUndefined();
+  });
+
+  it("trims whitespace but does not fold case", () => {
+    expect(
+      boardIdFromReport(boards, "  Waveshare ESP32-P4-WIFI6-Touch-LCD-7B  "),
+    ).toBe("waveshare-p4-touch-7b");
+    expect(
+      boardIdFromReport(boards, "waveshare esp32-p4-wifi6-touch-lcd-7b"),
+    ).toBeUndefined();
+  });
+
+  it("refuses a near miss rather than picking the closest", () => {
+    // The 8-inch X panel is a different controller (JD9365) and unsupported.
+    expect(
+      boardIdFromReport(boards, "Waveshare ESP32-P4-WIFI6-Touch-LCD-X 8in"),
+    ).toBeUndefined();
+    expect(boardIdFromReport(boards, "")).toBeUndefined();
+    expect(boardIdFromReport(boards, undefined)).toBeUndefined();
+    expect(boardIdFromReport(undefined, "anything")).toBeUndefined();
+  });
+
+  it("refuses when two boards claim one reported string", () => {
+    // A registry bug; resolving it either way guesses at the hardware.
+    const clashing = [
+      { ...boards[0]!, id: "a" },
+      { ...boards[0]!, id: "b" },
+    ];
+    expect(
+      boardIdFromReport(clashing, "Waveshare ESP32-P4-WIFI6-Touch-LCD-7B"),
+    ).toBeUndefined();
+  });
+
+  it("boards without reportedAs never match", () => {
+    const undeclared = [
+      { id: "x", target: "esp32p4" as const, name: "Some Panel" },
+    ];
+    expect(boardIdFromReport(undeclared, "Some Panel")).toBeUndefined();
   });
 });
