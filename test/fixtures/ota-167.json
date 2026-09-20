@@ -1,0 +1,28 @@
+{
+  "state": "idle",
+  "last_error": "",
+  "running": {
+    "version": "1.1.0-12-g44590ce-dirty",
+    "project": "cockpit",
+    "target": "esp32p4",
+    "slot": "ota_0",
+    "image_state": "valid",
+    "pending_verify": false,
+    "confirmed": true,
+    "other_slot": "ota_1",
+    "other_version": "",
+    "rolled_back": false,
+    "built": "Sep 19 2026 05:43:02",
+    "idf": "v6.0.3"
+  },
+  "manifest": {
+    "url": "",
+    "channel": "stable",
+    "auto_check": true,
+    "auto_install": false,
+    "last_check_s": null,
+    "next_check_s": null
+  },
+  "progress": { "received": 0, "total": 0 },
+  "available": null
+}

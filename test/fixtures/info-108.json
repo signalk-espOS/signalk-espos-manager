@@ -1,0 +1,17 @@
+{
+  "app": "ble_gateway",
+  "version": "0.2.0-3-gced7f3f-dirty",
+  "idf_version": "v6.0.2",
+  "chip": "esp32p4",
+  "chip_revision": 103,
+  "cores": 2,
+  "uptime_s": 445043,
+  "free_heap": 33661268,
+  "min_free_heap": 33615284,
+  "reset_reason": "poweron",
+  "config_storage_reset": false,
+  "schema_etag": "79b88cfd7a9f7285",
+  "ui_storage": true,
+  "time": { "synced": true, "source": "sntp", "now": 1789887631766 },
+  "last_reset": null
+}

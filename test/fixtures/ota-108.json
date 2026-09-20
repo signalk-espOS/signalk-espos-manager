@@ -1,0 +1,28 @@
+{
+  "state": "idle",
+  "last_error": "",
+  "running": {
+    "version": "0.2.0-3-gced7f3f-dirty",
+    "project": "ble_gateway",
+    "target": "esp32p4",
+    "slot": "ota_0",
+    "image_state": "valid",
+    "pending_verify": false,
+    "confirmed": true,
+    "other_slot": "ota_1",
+    "other_version": "0.7.1-5-ga58fb71-dirty",
+    "rolled_back": false,
+    "built": "Sep 14 2026 11:56:21",
+    "idf": "v6.0.2"
+  },
+  "manifest": {
+    "url": "",
+    "channel": "stable",
+    "auto_check": true,
+    "auto_install": false,
+    "last_check_s": null,
+    "next_check_s": null
+  },
+  "progress": { "received": 0, "total": 0 },
+  "available": null
+}
