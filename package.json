@@ -1,7 +1,7 @@
 {
   "name": "signalk-espos-manager",
   "version": "0.1.0",
-  "description": "Finds espOS devices on the boat network, mirrors signed firmware from a project registry, and drives over-the-air updates — with a browser flasher for a freshly bought board.",
+  "description": "Finds espOS devices on the boat network, mirrors signed firmware from a project registry, and drives over-the-air updates \u2014 with a browser flasher for a freshly bought board.",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -19,7 +19,7 @@
     "LICENSE"
   ],
   "scripts": {
-    "build": "tsc && vite build",
+    "build": "tsc && vite build --logLevel error",
     "test": "npm run typecheck:test && npm run typecheck:web && vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
