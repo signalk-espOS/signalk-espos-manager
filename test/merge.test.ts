@@ -51,8 +51,9 @@ describe("id helpers", () => {
   });
 
   it("derives the id from the last two MAC bytes, as espOS does", () => {
-    // Live: 192.168.0.167 reported mac 30:ed:a0:e3:2b:e9 and id 2be9.
-    expect(idFromMac("30:ed:a0:e3:2b:e9")).toBe("2be9");
+    // espOS derives the id from the last two bytes of the base MAC;
+    // confirmed on a real device, with the MAC here made up.
+    expect(idFromMac("aa:bb:cc:dd:2b:e9")).toBe("2be9");
     expect(idFromMac("30-ED-A0-E3-2B-E9")).toBe("2be9");
     expect(idFromMac("zz")).toBeUndefined();
   });
@@ -127,7 +128,7 @@ describe("mergeSightings", () => {
           source: "mdns",
           seenAt: NOW,
           addresses: ["192.168.0.167"],
-          mac: "30:ed:a0:e3:2b:e9",
+          mac: "aa:bb:cc:dd:2b:e9",
         },
       ],
       empty(),
@@ -138,7 +139,7 @@ describe("mergeSightings", () => {
 
   it("warns instead of unifying when the id and MAC disagree", () => {
     const { identities, warnings } = mergeSightings(
-      [mdns("1234", ["192.168.0.9"], { mac: "30:ed:a0:e3:2b:e9" })],
+      [mdns("1234", ["192.168.0.9"], { mac: "aa:bb:cc:dd:2b:e9" })],
       empty(),
     );
     expect(warnings).toHaveLength(1);
