@@ -4,8 +4,9 @@ Finds the [espOS](https://github.com/signalk-espOS/espOS) devices on your boat,
 keeps their firmware up to date from a project registry, and flashes a new
 board from the browser.
 
-> **Status: early development.** Device discovery works; the firmware mirror,
-> updates and the flasher are being built. See [Roadmap](#roadmap).
+> **Status: early development.** Device discovery, the firmware mirror and
+> update resolution work. Installing an update and the USB flasher are still
+> being built. See [Roadmap](#roadmap).
 
 ## What it does
 
@@ -59,12 +60,14 @@ anywhere. With the mirror enabled, devices never contact the internet at all.
 
 ## Roadmap
 
-| Phase | What it adds                                        |
-| ----- | --------------------------------------------------- |
-| 0     | Device discovery and the fleet list _(in progress)_ |
-| 1     | Firmware mirror, manifests and over-the-air updates |
-| 2     | The project store, with per-board compatibility     |
-| 3     | The browser USB flasher for new boards              |
+| Phase | What it adds                                       | State |
+| ----- | -------------------------------------------------- | ----- |
+| 0     | Device discovery and the fleet list                | done  |
+| 1a    | Firmware mirror and the manifest devices fetch     | done  |
+| 1b    | Update resolution from the registry                | done  |
+| 1c    | Installing an update, with progress and rollback   | next  |
+| 2     | The project store UI, with per-board compatibility |       |
+| 3     | The browser USB flasher for new boards             |       |
 
 ## Licence
 

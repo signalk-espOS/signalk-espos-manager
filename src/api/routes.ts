@@ -317,6 +317,113 @@ export function registerRoutes(
     }),
   );
 
+  // GET /api/jobs — every update this session knows about.
+  readonly.get(
+    "/api/jobs",
+    guard((_req, res) => {
+      const orch = getService().getOrchestrator();
+      res.json({
+        jobs: orch?.list() ?? [],
+        paused: orch?.isPaused ?? false,
+        pausedReason: orch?.getPausedReason(),
+      });
+    }),
+  );
+
+  // POST /api/jobs/resume — continue a queue paused by a failure.
+  router.post(
+    "/api/jobs/resume",
+    guard((_req, res) => {
+      const orch = getService().getOrchestrator();
+      if (orch === undefined) {
+        res.status(503).json({ error: "no update queue" });
+        return;
+      }
+      orch.resume();
+      res.json({ ok: true, paused: orch.isPaused });
+    }),
+  );
+
+  // POST /api/fleet/:id/update — mirror the firmware, then install it.
+  router.post(
+    "/api/fleet/:id/update",
+    guard((req, res) => {
+      void (async () => {
+        try {
+          const id = req.params?.id ?? "";
+          const body =
+            typeof req.body === "object" && req.body !== null
+              ? (req.body as Record<string, unknown>)
+              : {};
+          const result = await getService().startUpdate(id, {
+            confirmDowngrade: body.confirmDowngrade === true,
+          });
+          if (!result.ok) {
+            res.status(result.status ?? 409).json({ error: result.error });
+            return;
+          }
+          res.json({ ok: true, job: result.job });
+        } catch (error) {
+          res.status(502).json({ error: errorMessage(error) });
+        }
+      })();
+    }),
+  );
+
+  // DELETE /api/fleet/:id/job — drop a queued update.
+  router.delete(
+    "/api/fleet/:id/job",
+    guard((req, res) => {
+      const id = req.params?.id ?? "";
+      const orch = getService().getOrchestrator();
+      const result = orch?.cancel(id) ?? {
+        cancelled: false,
+        reason: "no update queue",
+      };
+      res.status(result.cancelled ? 200 : 409).json(result);
+    }),
+  );
+
+  // POST /api/fleet/:id/confirm — accept a pending image.
+  router.post(
+    "/api/fleet/:id/confirm",
+    guard((req, res) => {
+      void (async () => {
+        try {
+          const client = getService().clientFor(req.params?.id ?? "");
+          if (client === undefined) {
+            res.status(404).json({ error: "no such device" });
+            return;
+          }
+          await client.otaConfirm();
+          res.json({ ok: true });
+        } catch (error) {
+          res.status(502).json({ error: errorMessage(error) });
+        }
+      })();
+    }),
+  );
+
+  // POST /api/fleet/:id/rollback — go back to the previous image.
+  router.post(
+    "/api/fleet/:id/rollback",
+    guard((req, res) => {
+      void (async () => {
+        try {
+          const client = getService().clientFor(req.params?.id ?? "");
+          if (client === undefined) {
+            res.status(404).json({ error: "no such device" });
+            return;
+          }
+          await client.otaRollback();
+          res.json({ ok: true });
+        } catch (error) {
+          res.status(502).json({ error: errorMessage(error) });
+        }
+      })();
+    }),
+  );
+
   // DELETE /api/fleet/:id — forget a device and its key.
   router.delete(
     "/api/fleet/:id",
