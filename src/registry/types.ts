@@ -23,6 +23,18 @@ export interface RegistryBoard {
   flashMinBytes?: number;
   notes?: string;
   buyUrl?: string;
+  /**
+   * The string this board's firmware reports verbatim in
+   * `/api/v1/system/info` -> `hardware.board` (espOS `opts.board`).
+   *
+   * A device reports a human name chosen by its firmware; the registry keys
+   * builds by `id`. Only an explicit, exact mapping can join the two: names
+   * are edited for readability and a fuzzy match would eventually install
+   * firmware for a different display. Absent means the board cannot be
+   * identified from a device's own report, and an update is withheld rather
+   * than guessed.
+   */
+  reportedAs?: string;
 }
 
 /** How to find the firmware files in a release's asset list. */
