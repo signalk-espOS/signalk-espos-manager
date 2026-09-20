@@ -1,0 +1,71 @@
+name: Deploy the hosted flasher
+
+# Browsers only allow USB access from a secure page. A Signal K server on a
+# boat is plain http on a LAN address, so the flasher inside the plugin cannot
+# write to a board there and links to this copy instead. A board being set up
+# for the first time has no network connection to the boat's server anyway.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "web/**"
+      - "vite.config.ts"
+      - "package.json"
+      - "package-lock.json"
+      - "icon.svg"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: Stage the site
+        run: |
+          # Pages serves this repository at /signalk-espos-manager/, which is
+          # the same base the plugin's webapp uses — so the built output can be
+          # published as-is and the asset paths resolve either way.
+          mkdir -p site
+          cp -r public/* site/
+          cp icon.svg site/ 2>/dev/null || true
+          # A visitor landing on the root should reach the flasher, not the
+          # device list, which needs a server it cannot see from here.
+          cat > site/index.html <<'HTML'
+          <!doctype html>
+          <html lang="en">
+            <head>
+              <meta charset="utf-8" />
+              <meta http-equiv="refresh" content="0; url=./flash/" />
+              <title>Flash an espOS board</title>
+            </head>
+            <body>
+              <p><a href="./flash/">Flash an espOS board</a></p>
+            </body>
+          </html>
+          HTML
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: site
+      - id: deploy
+        uses: actions/deploy-pages@v4

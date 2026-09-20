@@ -12,16 +12,19 @@ export default defineConfig({
   base: "/signalk-espos-manager/",
   plugins: [preact()],
   build: {
+    // Two entries: the plugin's webapp and the standalone flasher. The
+    // flasher is deployed to GitHub Pages because browsers only allow USB
+    // access from a secure page, and a Signal K server on a boat is plain
+    // http on a LAN address.
+    rollupOptions: {
+      input: {
+        index: "web/index.html",
+        flash: "web/flash/index.html",
+      },
+    },
     outDir: "../public",
     emptyOutDir: false,
     // A boat is often on a marina LTE connection; keep it small and one file.
     assetsInlineLimit: 8192,
-    rollupOptions: {
-      output: {
-        entryFileNames: "app.js",
-        chunkFileNames: "app-[hash].js",
-        assetFileNames: "app.[ext]",
-      },
-    },
   },
 });
