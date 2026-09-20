@@ -19,7 +19,7 @@ import {
   type RegistryDto,
 } from "./api.js";
 
-export type Page = "fleet" | "store" | "device";
+export type Page = "fleet" | "store" | "device" | "flash";
 
 interface ManagerState {
   page: Page;

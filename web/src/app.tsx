@@ -4,6 +4,7 @@ import { useStore } from "./store.js";
 import { FleetPage } from "./pages/Fleet.js";
 import { StorePage } from "./pages/Store.js";
 import { DevicePage } from "./pages/Device.js";
+import { FlashPage } from "./pages/Flash.js";
 
 /** How often the fleet view re-reads the server while a page is open. */
 const REFRESH_MS = 5000;
@@ -70,6 +71,12 @@ export function App() {
           >
             Firmware
           </button>
+          <button
+            class={page === "flash" ? "tab active" : "tab"}
+            onClick={() => go("flash")}
+          >
+            New board
+          </button>
           {running > 0 && <span class="pill busy">{running} updating</span>}
           {loading && <span class="pill">refreshing…</span>}
         </nav>
@@ -89,6 +96,7 @@ export function App() {
       {page === "fleet" && <FleetPage />}
       {page === "store" && <StorePage />}
       {page === "device" && <DevicePage />}
+      {page === "flash" && <FlashPage />}
     </main>
   );
 }
