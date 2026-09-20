@@ -270,3 +270,22 @@ details button {
 a {
   color: var(--accent);
 }
+
+.checks {
+  list-style: none;
+  padding: 0;
+  margin: 0.5rem 0;
+}
+.checks li {
+  padding: 0.15rem 0;
+  font-size: 0.9rem;
+}
+.checks li.ok {
+  color: var(--ok);
+}
+code {
+  font-size: 0.9em;
+  background: var(--bg);
+  padding: 0.1rem 0.3rem;
+  border-radius: 4px;
+}
