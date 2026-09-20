@@ -11,6 +11,7 @@
 import type { ManagerService } from "../service.js";
 import { PLUGIN_ID, PUBLIC_FW_BASE } from "../config.js";
 import { configureOta } from "../ota/configure.js";
+import { matchDevice, projectForApp } from "../registry/resolve.js";
 import { DeviceClient } from "../device/client.js";
 import { serializeDevice, serializeFleet } from "./serialize.js";
 
@@ -161,6 +162,105 @@ export function registerRoutes(
               filename: f.filename,
               sizeBytes: f.sizeBytes,
             })),
+          });
+        } catch (error) {
+          res.status(500).json({ error: errorMessage(error) });
+        }
+      })();
+    }),
+  );
+
+  // GET /api/registry — the project list behind the Store page.
+  readonly.get(
+    "/api/registry",
+    guard((_req, res) => {
+      void (async () => {
+        try {
+          const result = await getService().getIndex();
+          res.json({
+            projects: result.index.projects,
+            updated: result.index.updated,
+            stale: result.stale,
+            fetchedAt:
+              result.fetchedAt === undefined
+                ? undefined
+                : new Date(result.fetchedAt).toISOString(),
+            reason: result.reason,
+            warnings: result.warnings,
+          });
+        } catch (error) {
+          res.status(500).json({ error: errorMessage(error) });
+        }
+      })();
+    }),
+  );
+
+  // POST /api/registry/refresh — re-read the registry now.
+  router.post(
+    "/api/registry/refresh",
+    guard((_req, res) => {
+      void (async () => {
+        try {
+          const result = await getService().getIndex(true);
+          res.json({
+            ok: !result.stale,
+            projects: result.index.projects.length,
+            stale: result.stale,
+            reason: result.reason,
+          });
+        } catch (error) {
+          res.status(502).json({ error: errorMessage(error) });
+        }
+      })();
+    }),
+  );
+
+  // GET /api/fleet/:id/available — what this device could be updated to.
+  readonly.get(
+    "/api/fleet/:id/available",
+    guard((req, res) => {
+      void (async () => {
+        try {
+          const id = req.params?.id ?? "";
+          const service = getService();
+          const device = service.fleet.get(id);
+          if (device === undefined) {
+            res.status(404).json({ error: `no device ${id}` });
+            return;
+          }
+          const app = device.snapshot?.app;
+          if (app === undefined) {
+            res.json({
+              reason: "this device has not reported which firmware it runs yet",
+            });
+            return;
+          }
+          const { index } = await service.getIndex();
+          const project = projectForApp(index, app);
+          if (project === undefined) {
+            res.json({
+              reason: `no registry project provides "${app}"`,
+            });
+            return;
+          }
+          const settings = service.getSettings();
+          const match = matchDevice(project, {
+            app,
+            target: device.snapshot?.target,
+            board: device.snapshot?.board,
+            runningVersion: device.snapshot?.version ?? "",
+            channel: settings?.ota.channel ?? "stable",
+            keyFp: device.snapshot?.ota?.running?.keyFp,
+            includePrerelease: settings?.registry.includePrerelease,
+          });
+          res.json({
+            project: {
+              id: project.id,
+              name: project.name,
+              repo: project.repo,
+              official: project.official === true,
+            },
+            ...match,
           });
         } catch (error) {
           res.status(500).json({ error: errorMessage(error) });

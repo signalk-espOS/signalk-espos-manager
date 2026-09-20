@@ -321,3 +321,55 @@ export function manifestUrlFits(
   }
   return { ok: true };
 }
+
+/**
+ * Reduce a GitHub release body to one line worth showing on a device.
+ *
+ * Release bodies are markdown — headings, changelog links, bullet lists — and
+ * the device stores 127 bytes, so a raw body arrives as a truncated URL. Take
+ * the first line of actual prose instead, dropping heading markers, link
+ * syntax and the compare-URL line release-please puts first.
+ */
+const SECTION_LABELS = new Set([
+  "added",
+  "changed",
+  "fixed",
+  "removed",
+  "deprecated",
+  "security",
+  "features",
+  "bug fixes",
+  "bugfixes",
+  "performance improvements",
+  "miscellaneous chores",
+  "documentation",
+  "what's changed",
+  "breaking changes",
+]);
+
+export function summariseReleaseNotes(body: string | undefined): string {
+  if (body === undefined) return "";
+  for (const raw of body.split(/\r?\n/)) {
+    let line = raw.trim();
+    if (line === "") continue;
+    // Drop a leading heading marker, list bullet or blockquote.
+    line = line
+      .replace(/^#{1,6}\s*/, "")
+      .replace(/^[-*+]\s+/, "")
+      .replace(/^>\s*/, "");
+    // Unwrap [text](url) to text, and drop bare URLs.
+    line = line
+      .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
+      .replace(/https?:\/\/\S+/g, "")
+      .trim();
+    // Strip emphasis and inline code markers.
+    line = line.replace(/[*_`]/g, "").trim();
+    // A version heading on its own ("1.2.0", "v1.2.0 (2026-09-19)") is not a
+    // summary, and neither is a release-please section label ("Added",
+    // "Bug Fixes", "Features"). Keep looking for the first real sentence.
+    if (line === "" || /^v?\d+(\.\d+)+\s*(\(.*\))?$/.test(line)) continue;
+    if (SECTION_LABELS.has(line.toLowerCase().replace(/:$/, ""))) continue;
+    return line;
+  }
+  return "";
+}
