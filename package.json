@@ -1,0 +1,77 @@
+{
+  "name": "signalk-espos-manager",
+  "version": "0.1.0",
+  "description": "Finds espOS devices on the boat network, mirrors signed firmware from a project registry, and drives over-the-air updates — with a browser flasher for a freshly bought board.",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "public",
+    "icon.svg",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "test": "npm run typecheck:test && vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "typecheck:test": "tsc --noEmit --project tsconfig.test.json",
+    "prettier": "prettier --write .",
+    "lint": "eslint --fix",
+    "format": "npm run prettier && npm run lint",
+    "ci-lint": "eslint && prettier --check .",
+    "prepare": "npm run build",
+    "prepublishOnly": "npm run build && npm test"
+  },
+  "keywords": [
+    "signalk-node-server-plugin",
+    "signalk-webapp",
+    "signalk-category-utility",
+    "espos",
+    "esp32",
+    "firmware",
+    "ota",
+    "marine"
+  ],
+  "author": "Dirk Wahrheit",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/signalk-espOS/signalk-espos-manager.git"
+  },
+  "bugs": {
+    "url": "https://github.com/signalk-espOS/signalk-espos-manager/issues"
+  },
+  "homepage": "https://github.com/signalk-espOS/signalk-espos-manager#readme",
+  "signalk": {
+    "displayName": "espOS Manager",
+    "appIcon": "./icon.svg"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "@sinclair/typebox": "^0.34.49",
+    "bonjour-service": "^1.4.4"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@signalk/server-api": "^2.32.0",
+    "@types/node": "^22.0.0",
+    "eslint": "^10.2.0",
+    "eslint-config-prettier": "^10.1.8",
+    "globals": "^17.12.0",
+    "prettier": "^3.8.1",
+    "typescript": "^5.9.0",
+    "typescript-eslint": "^8.69.0",
+    "vitest": "^4.1.10"
+  }
+}
