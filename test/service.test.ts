@@ -6,7 +6,8 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { filenameFromUrl } from "../src/service.js";
+import type os from "node:os";
+import { filenameFromUrl, localAddressFor } from "../src/service.js";
 
 describe("filenameFromUrl", () => {
   it("takes the last path segment of a real release URL", () => {
@@ -48,5 +49,39 @@ describe("filenameFromUrl", () => {
     expect(filenameFromUrl("https://x.invalid/a/ota.bin?token=secret")).toBe(
       "ota.bin",
     );
+  });
+});
+
+describe("localAddressFor", () => {
+  // The interface list from the boat server this was developed on: two IPv4
+  // addresses on eth0, one on wlan0, a container bridge, and loopback.
+  const boat = {
+    lo: [{ family: "IPv4", address: "127.0.0.1", internal: true }],
+    eth0: [
+      { family: "IPv4", address: "172.31.3.148", internal: false },
+      { family: "IPv4", address: "192.168.0.148", internal: false },
+    ],
+    wlan0: [{ family: "IPv4", address: "192.168.0.147", internal: false }],
+    moinnet: [{ family: "IPv4", address: "10.211.0.2", internal: false }],
+  } as unknown as NodeJS.Dict<os.NetworkInterfaceInfo[]>;
+
+  it("gives a device the address on its own network", () => {
+    // The critical case: handing a device 127.0.0.1 makes it look at itself
+    // and find nothing, so every mirrored update would fail.
+    expect(localAddressFor("192.168.0.167", boat)).toMatch(/^192\.168\.0\./);
+    expect(localAddressFor("10.211.0.9", boat)).toBe("10.211.0.2");
+    expect(localAddressFor("172.31.3.9", boat)).toBe("172.31.3.148");
+  });
+
+  it("never returns loopback when a real interface exists", () => {
+    expect(localAddressFor("192.168.0.167", boat)).not.toBe("127.0.0.1");
+    expect(localAddressFor(undefined, boat)).not.toBe("127.0.0.1");
+  });
+
+  it("falls back to loopback only when there is nothing else", () => {
+    const only = {
+      lo: [{ family: "IPv4", address: "127.0.0.1", internal: true }],
+    } as unknown as NodeJS.Dict<os.NetworkInterfaceInfo[]>;
+    expect(localAddressFor("192.168.0.167", only)).toBe("127.0.0.1");
   });
 });

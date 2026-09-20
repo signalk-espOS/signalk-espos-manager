@@ -146,7 +146,11 @@ export class OtaOrchestrator {
       ) {
         const entry = this.queue.shift();
         if (entry === undefined) break;
-        await this.start(entry);
+        // Start without awaiting, so the loop can fill up to maxConcurrent.
+        // Awaiting here made the queue serial whatever the setting said — the
+        // default of 1 hid it. start() registers in this.running before its
+        // first await, so the size check above stays accurate.
+        void this.start(entry);
       }
     } finally {
       this.draining = false;
@@ -178,7 +182,11 @@ export class OtaOrchestrator {
       }
       return;
     }
-    // Keep draining; the loop in drain() handles the rest.
-    void this.drain();
+    // Keep draining. Deferred so this runs after drain()'s finally clears the
+    // draining flag — calling straight through would hit the re-entry guard
+    // and the queue would stall with capacity to spare.
+    queueMicrotask(() => {
+      void this.drain();
+    });
   }
 }

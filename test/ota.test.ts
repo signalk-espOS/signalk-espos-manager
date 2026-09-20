@@ -316,8 +316,23 @@ describe("OtaJob", () => {
 });
 
 describe("OtaOrchestrator", () => {
+  /**
+   * Orchestrator jobs run on a controlled clock with a short timeout, so a
+   * test can never leave a real 60-second polling job running against a
+   * closed server.
+   */
   function fakeJobOptions(deviceId: string, client: DeviceClient) {
-    return { ...jobOptions(client), deviceId };
+    let clock = 0;
+    return {
+      ...jobOptions(client, {
+        timeoutMs: 3000,
+        now: () => clock,
+        sleep: async () => {
+          clock += 500;
+        },
+      }),
+      deviceId,
+    };
   }
 
   it("refuses a second job for the same device", async () => {
@@ -356,6 +371,13 @@ describe("OtaOrchestrator", () => {
   });
 
   it("cannot cancel a job that has already started", async () => {
+    // Hold the job inside its first poll so it is provably running when
+    // cancel() is called. A timing-based wait raced the controlled clock and
+    // found the job already finished.
+    let release!: () => void;
+    const holding = new Promise<void>((resolve) => {
+      release = resolve;
+    });
     const device = await startDevice({
       statuses: [
         { state: "downloading", progress: { received: 1, total: 99 } },
@@ -363,9 +385,17 @@ describe("OtaOrchestrator", () => {
       pings: [{ app: "cockpit", version: "1.1.0", auth: false }],
     });
     const orch = new OtaOrchestrator({ maxConcurrent: 1 });
-    orch.enqueue(fakeJobOptions("2be9", device.client));
-    await new Promise<void>((r) => setTimeout(r, 50));
+    let polls = 0;
+    orch.enqueue({
+      ...fakeJobOptions("2be9", device.client),
+      sleep: async () => {
+        polls += 1;
+        if (polls === 1) await holding;
+      },
+    });
+    await new Promise<void>((r) => setTimeout(r, 20));
     const result = orch.cancel("2be9");
+    release();
     expect(result.cancelled).toBe(false);
     expect(result.reason).toMatch(/cannot be cancelled/);
   });
@@ -383,6 +413,46 @@ describe("OtaOrchestrator", () => {
     const result = orch.cancel("6f19");
     expect(result.cancelled).toBe(true);
     expect(orch.isBusy("6f19")).toBe(false);
+  });
+
+  it("runs several jobs at once when allowed to", async () => {
+    // Review finding: drain() awaited each job, so the queue was serial
+    // whatever maxConcurrent said — the default of 1 hid it.
+    const device = await startDevice({
+      statuses: [
+        { state: "ready" },
+        { state: "idle", running: { version: "1.2.0", pending_verify: false } },
+      ],
+      pings: [
+        { app: "cockpit", version: "1.1.0", auth: false },
+        null,
+        { app: "cockpit", version: "1.2.0", auth: false },
+      ],
+    });
+    const orch = new OtaOrchestrator({ maxConcurrent: 3 });
+    for (const id of ["2be9", "6f19", "ca6a"]) {
+      orch.enqueue(fakeJobOptions(id, device.client));
+    }
+    // One microtask turn is enough for drain() to have started all three.
+    await new Promise<void>((r) => setTimeout(r, 0));
+    const started = orch.list().filter((v) => v.state !== "queued");
+    expect(started.length).toBe(3);
+  });
+
+  it("still runs one at a time by default", async () => {
+    // The serial default is a safety property, not a performance choice.
+    const device = await startDevice({
+      statuses: [
+        { state: "downloading", progress: { received: 1, total: 99 } },
+      ],
+      pings: [{ app: "cockpit", version: "1.1.0", auth: false }],
+    });
+    const orch = new OtaOrchestrator({ maxConcurrent: 1 });
+    for (const id of ["2be9", "6f19"]) {
+      orch.enqueue(fakeJobOptions(id, device.client));
+    }
+    await new Promise<void>((r) => setTimeout(r, 0));
+    expect(orch.list().filter((v) => v.state === "queued").length).toBe(1);
   });
 
   it("reports nothing to cancel for an unknown device", async () => {

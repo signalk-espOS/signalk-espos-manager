@@ -4,6 +4,7 @@
  */
 
 import type { ServerAPI } from "@signalk/server-api";
+import os from "node:os";
 import { join } from "node:path";
 import type { ManagerSettings } from "./config.js";
 import { PLUGIN_ID, PUBLIC_FW_BASE } from "./config.js";
@@ -120,9 +121,18 @@ export class ManagerService {
 
   async stop(): Promise<void> {
     this.started = false;
+    // Pause before discarding: a queued job left running would keep polling a
+    // device, and calling report() on a stopped plugin, long after the user
+    // disabled it. A job already writing flash is deliberately NOT interrupted
+    // — the device is mid-update and stopping now is worse than letting it
+    // finish; it is simply no longer watched.
+    this.orchestrator?.pause("the plugin was stopped");
+    this.orchestrator = undefined;
     await this.poller?.stop();
     this.poller = undefined;
     this.keys = undefined;
+    this.store = undefined;
+    this.registry = undefined;
   }
 
   /** Force an immediate mDNS re-query and poll. */
@@ -390,7 +400,9 @@ export class ManagerService {
       client,
       fromVersion: snapshot.version,
       toVersion: build.version,
-      url: url.startsWith("/") ? `${this.serverOrigin()}${url}` : url,
+      url: url.startsWith("/")
+        ? `${this.originReachableFrom(device.identity.addresses[0])}${url}`
+        : url,
       timeoutMs: settings.ota.installTimeoutS * 1000,
       confirmGraceMs: settings.ota.confirmGraceS * 1000,
       autoConfirm: settings.ota.autoConfirm,
@@ -443,6 +455,24 @@ export class ManagerService {
     await store.writeManifest(app, json);
   }
 
+  /**
+   * A base URL for THIS server that the given device can actually reach.
+   *
+   * serverOrigin() is loopback, which is right for our own mount probe and
+   * catastrophic in a firmware URL: a device resolving 127.0.0.1 looks at
+   * itself and finds nothing. The address is therefore derived from the route
+   * the device already uses to reach us — the local interface address on the
+   * same network as the device — so the URL works from where the device sits.
+   */
+  private originReachableFrom(deviceAddress: string | undefined): string {
+    const config = (
+      this.app as unknown as { config?: { settings?: { port?: number } } }
+    ).config;
+    const port = config?.settings?.port ?? 3000;
+    const host = localAddressFor(deviceAddress);
+    return `http://${host}:${port}`;
+  }
+
   /** The chip a device running this app reported, when one did. */
   private targetForApp(app: string): string | undefined {
     for (const device of this.fleet.list()) {
@@ -486,4 +516,47 @@ export function filenameFromUrl(url: string): string {
   return /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(segment)
     ? segment
     : "firmware.bin";
+}
+
+/**
+ * The address of the local interface that shares a network with `peer`.
+ *
+ * A device on the boat LAN must be handed the server's LAN address, not
+ * loopback and not a container-internal address. Matching on the longest
+ * shared prefix picks the right interface on a host with several (a boat
+ * server commonly has both wifi and ethernet).
+ */
+export function localAddressFor(
+  peer: string | undefined,
+  interfaces: NodeJS.Dict<os.NetworkInterfaceInfo[]> = os.networkInterfaces(),
+): string {
+  const candidates: string[] = [];
+  for (const list of Object.values(interfaces)) {
+    for (const entry of list ?? []) {
+      if (entry.family !== "IPv4" || entry.internal) continue;
+      candidates.push(entry.address);
+    }
+  }
+  if (candidates.length === 0) return "127.0.0.1";
+  if (peer === undefined) return candidates[0] ?? "127.0.0.1";
+
+  const peerParts = peer.split(".");
+  let best = candidates[0] ?? "127.0.0.1";
+  let bestScore = -1;
+  for (const candidate of candidates) {
+    const parts = candidate.split(".");
+    let score = 0;
+    while (
+      score < 4 &&
+      parts[score] !== undefined &&
+      parts[score] === peerParts[score]
+    ) {
+      score += 1;
+    }
+    if (score > bestScore) {
+      bestScore = score;
+      best = candidate;
+    }
+  }
+  return best;
 }
