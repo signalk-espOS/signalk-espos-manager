@@ -161,6 +161,10 @@ function App() {
       });
       setFinished(true);
     } catch (e) {
+      // Clear the progress bar as well as showing the error: every control —
+      // including "try again" — is hidden while a write looks to be running,
+      // so leaving it set strands the user with a message and no way out.
+      setProgress(undefined);
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);

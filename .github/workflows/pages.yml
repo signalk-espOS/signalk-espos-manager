@@ -11,6 +11,8 @@ on:
       - "web/**"
       - "vite.config.ts"
       - "package.json"
+      - "package-lock.json"
+      - "icon.svg"
       - ".github/workflows/pages.yml"
   workflow_dispatch:
 
