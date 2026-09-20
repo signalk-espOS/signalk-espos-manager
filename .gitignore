@@ -1,9 +1,7 @@
 node_modules/
 dist/
-public/app.js
-public/app.css
-public/index.html
-public/fw
+# public/ is build output, except the fw symlink the plugin creates at runtime.
+public/
 *.log
 *.tgz
 .DS_Store
