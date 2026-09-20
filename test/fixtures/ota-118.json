@@ -1,0 +1,28 @@
+{
+  "state": "failed",
+  "last_error": "manifest: ESP_ERR_HTTP_CONNECT",
+  "running": {
+    "version": "1.1.0-3-g468d0f0-dirty",
+    "project": "cockpit",
+    "target": "esp32p4",
+    "slot": "ota_1",
+    "image_state": "valid",
+    "pending_verify": false,
+    "confirmed": true,
+    "other_slot": "ota_0",
+    "other_version": "1.1.0-2-g5c0eb97-dirty",
+    "rolled_back": false,
+    "built": "Sep 10 2026 08:56:07",
+    "idf": "v6.0.2"
+  },
+  "manifest": {
+    "url": "http://192.168.0.148:8090/manifest.json",
+    "channel": "stable",
+    "auto_check": true,
+    "auto_install": false,
+    "last_check_s": 29062,
+    "next_check_s": 57338
+  },
+  "progress": { "received": 0, "total": 0 },
+  "available": null
+}

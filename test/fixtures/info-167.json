@@ -1,0 +1,17 @@
+{
+  "app": "cockpit",
+  "version": "1.1.0-12-g44590ce-dirty",
+  "idf_version": "v6.0.3",
+  "chip": "esp32p4",
+  "chip_revision": 103,
+  "cores": 2,
+  "uptime_s": 94205,
+  "free_heap": 31102559,
+  "min_free_heap": 30241336,
+  "reset_reason": "poweron",
+  "config_storage_reset": false,
+  "schema_etag": "e9408848b6f44b22",
+  "ui_storage": true,
+  "time": { "synced": true, "source": "sntp", "now": 1789887631713 },
+  "last_reset": null
+}
