@@ -81,23 +81,23 @@ export const useStore = create<ManagerState>((set, get) => ({
         api.mirror(),
         api.jobs(),
       ]);
-      // The registry can be slow or unreachable; it must not hold up the fleet.
-      let registry = get().registry;
-      try {
-        registry = await api.registry();
-      } catch {
-        // Keep whatever we had; the page shows the staleness itself.
-      }
+      // Show the fleet immediately. The registry is a separate, slower fetch
+      // over the internet, and awaiting it here delayed the device list behind
+      // a request that may take seconds or never finish at all.
       set({
         fleet,
         mirror,
         jobs,
-        registry,
         needsLogin: false,
         loading: false,
         error: undefined,
         lastRefresh: Date.now(),
       });
+      try {
+        set({ registry: await api.registry() });
+      } catch {
+        // Keep whatever we had; the store page shows the staleness itself.
+      }
     } catch (error) {
       if (error instanceof ApiError && error.isUnauthorized) {
         set({ needsLogin: true, loading: false });
@@ -124,13 +124,18 @@ export const useStore = create<ManagerState>((set, get) => ({
   /** Run an action, then refresh — with the outcome shown either way. */
   act: async (what, fn) => {
     set({ loading: true, error: undefined, notice: undefined });
+    let outcome: { notice?: string; error?: string };
     try {
       await fn();
-      set({ notice: `${what} — done` });
+      outcome = { notice: `${what} — done` };
     } catch (error) {
-      set({ error: `${what} — ${describe(error)}` });
+      outcome = { error: `${what} — ${describe(error)}` };
     }
+    // The refresh below clears error/notice on success, so the outcome is
+    // re-applied afterwards. Without this a failed action vanished silently,
+    // which is the worst way for one to fail.
     await get().refresh();
+    set(outcome);
     const selected = get().selectedDevice;
     if (selected !== undefined) await get().loadAvailable(selected);
   },

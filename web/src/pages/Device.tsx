@@ -1,5 +1,5 @@
 import { useState } from "preact/hooks";
-import { api } from "../api.js";
+import { api, isJobFinished } from "../api.js";
 import { useStore } from "../store.js";
 
 function bytes(value: number | undefined): string {
@@ -34,8 +34,7 @@ export function DevicePage() {
 
   const offer = available[device.id];
   const job = jobs?.jobs.find((j) => j.deviceId === device.id);
-  const busy =
-    job !== undefined && job.state !== "done" && job.state !== "failed";
+  const busy = job !== undefined && !isJobFinished(job);
 
   return (
     <>

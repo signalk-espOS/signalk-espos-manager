@@ -1,4 +1,4 @@
-import { api, type DeviceDto } from "../api.js";
+import { api, isJobFinished, type DeviceDto } from "../api.js";
 import { useStore } from "../store.js";
 
 /** Human-readable reachability, since the raw words are jargon. */
@@ -125,7 +125,7 @@ export function FleetPage() {
                     not set up for updates
                   </span>
                 )}
-                {job !== undefined && job.state !== "done" && (
+                {job !== undefined && !isJobFinished(job) && (
                   <span class="pill busy">
                     {job.state}
                     {job.progress !== undefined &&

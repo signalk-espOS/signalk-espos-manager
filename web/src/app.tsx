@@ -1,4 +1,5 @@
 import { useEffect } from "preact/hooks";
+import { isJobFinished } from "./api.js";
 import { useStore } from "./store.js";
 import { FleetPage } from "./pages/Fleet.js";
 import { StorePage } from "./pages/Store.js";
@@ -49,7 +50,7 @@ export function App() {
   }
 
   const running = (jobs?.jobs ?? []).filter(
-    (job) => job.state !== "done" && job.state !== "failed",
+    (job) => !isJobFinished(job),
   ).length;
 
   return (

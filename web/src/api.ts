@@ -166,6 +166,22 @@ export interface JobDto {
   confirmBy?: number;
 }
 
+/**
+ * A job in one of these states has finished; anything else is still in
+ * flight. `rolled-back` belongs here — the device protected itself and is
+ * running again, so the UI must let the user act rather than showing a
+ * spinner forever.
+ */
+const TERMINAL: ReadonlySet<JobDto["state"]> = new Set([
+  "done",
+  "failed",
+  "rolled-back",
+]);
+
+export function isJobFinished(job: JobDto | undefined): boolean {
+  return job === undefined || TERMINAL.has(job.state);
+}
+
 export interface JobsDto {
   jobs: JobDto[];
   paused: boolean;
