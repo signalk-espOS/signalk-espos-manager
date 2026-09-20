@@ -92,6 +92,22 @@ export function parseIndex(raw: unknown): RegistryIndex {
   };
 }
 
+/**
+ * Parse a cached body, returning undefined rather than throwing.
+ *
+ * A cache file can be valid JSON at the envelope level and still not be an
+ * index — a truncated write, or a schema that moved on. Left unguarded, a
+ * corrupt-but-fresh cache throws out of getIndex() into a route handler and
+ * the poll loop, and nothing short of deleting the file by hand recovers it.
+ */
+function tryParse(body: string): RegistryIndex | undefined {
+  try {
+    return parseIndex(JSON.parse(body));
+  } catch {
+    return undefined;
+  }
+}
+
 export class RegistryClient {
   private readonly log: (message: string) => void;
   private readonly now: () => number;
@@ -151,13 +167,17 @@ export class RegistryClient {
     reason?: string;
   }> {
     const cached = await this.readCache(url);
+    const cachedIndex =
+      cached === undefined ? undefined : tryParse(cached.body);
     const fresh =
-      cached !== undefined && this.now() - cached.fetchedAt < maxAgeMs;
-    if (fresh && !force) {
+      cached !== undefined &&
+      cachedIndex !== undefined &&
+      this.now() - cached.fetchedAt < maxAgeMs;
+    if (fresh && cachedIndex !== undefined && !force) {
       return {
-        index: parseIndex(JSON.parse(cached.body)),
+        index: cachedIndex,
         stale: false,
-        fetchedAt: cached.fetchedAt,
+        fetchedAt: cached?.fetchedAt,
       };
     }
 
@@ -173,14 +193,14 @@ export class RegistryClient {
         signal: controller.signal,
       });
 
-      if (response.status === 304 && cached !== undefined) {
+      if (
+        response.status === 304 &&
+        cached !== undefined &&
+        cachedIndex !== undefined
+      ) {
         // Unchanged: refresh the timestamp so we do not re-ask immediately.
         await this.writeCache({ ...cached, fetchedAt: this.now() });
-        return {
-          index: parseIndex(JSON.parse(cached.body)),
-          stale: false,
-          fetchedAt: this.now(),
-        };
+        return { index: cachedIndex, stale: false, fetchedAt: this.now() };
       }
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}`);
@@ -198,19 +218,15 @@ export class RegistryClient {
       return { index, stale: false, fetchedAt: this.now() };
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
-      if (cached !== undefined) {
+      if (cached !== undefined && cachedIndex !== undefined) {
         // The whole point: a store that still works at anchor.
         this.log(`registry ${url} unreachable (${reason}); using the cache`);
-        try {
-          return {
-            index: parseIndex(JSON.parse(cached.body)),
-            stale: true,
-            fetchedAt: cached.fetchedAt,
-            reason,
-          };
-        } catch {
-          // Cache is corrupt as well; fall through to empty.
-        }
+        return {
+          index: cachedIndex,
+          stale: true,
+          fetchedAt: cached.fetchedAt,
+          reason,
+        };
       }
       return { index: EMPTY, stale: true, reason };
     } finally {

@@ -532,6 +532,32 @@ describe("RegistryClient", () => {
     expect(aAgain.index.projects[0]?.id).toBe("from-a");
   });
 
+  it("does not throw on a corrupt but still-fresh cache", async () => {
+    // A cache file can be valid JSON at the envelope level and still not be an
+    // index — a truncated write, or a schema that moved on. Unguarded this
+    // threw out of getIndex() into the route handler and the poll loop, and
+    // nothing short of deleting the file by hand recovered it.
+    const { writeFile } = await import("node:fs/promises");
+    const { createHash } = await import("node:crypto");
+    const url = "http://127.0.0.1:1/index.json";
+    const digest = createHash("sha256")
+      .update(url, "utf8")
+      .digest("hex")
+      .slice(0, 32);
+    await writeFile(
+      join(cacheDir, `registry-${digest}.json`),
+      JSON.stringify({ url, fetchedAt: Date.now(), body: '{"nope":true}' }),
+    );
+    const client = new RegistryClient({
+      cacheDir,
+      indexUrl: url,
+      timeoutMs: 800,
+    });
+    const result = await client.getIndex({ maxAgeMs: 60_000 });
+    expect(result.index.projects).toEqual([]);
+    expect(result.stale).toBe(true);
+  });
+
   it("treats a server error as a fallback, not a crash", async () => {
     const url = await serveIndex({}, { status: 500 });
     const client = new RegistryClient({ cacheDir, indexUrl: url });
