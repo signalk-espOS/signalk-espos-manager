@@ -287,6 +287,46 @@ describe("FirmwareStore manifests and pruning", () => {
     expect(await store.has("cockpit", "1.0.0", "ota.bin")).toBe(true);
   });
 
+  it("keeps the full spare budget alongside a version in use", async () => {
+    // Review finding: a protected version was counted against keepVersions, so
+    // keepVersions=2 with one version in use retained only ONE spare. It gets
+    // worse as more devices pin versions, quietly pruning the cache harder
+    // than configured.
+    const store = makeStore({ keepVersions: 2 });
+    for (const v of ["1.0.0", "1.1.0", "1.2.0", "1.3.0"]) {
+      await mkdir(join(base, "fw", "cockpit", v), { recursive: true });
+      await writeFile(join(base, "fw", "cockpit", v, "ota.bin"), "x");
+    }
+    // 1.3.0 is running on a device.
+    const removed = await store.prune("cockpit", ["1.3.0"]);
+    expect(removed).toEqual(["1.0.0"]);
+    // Two spares kept, plus the protected one.
+    expect(await store.has("cockpit", "1.1.0", "ota.bin")).toBe(true);
+    expect(await store.has("cockpit", "1.2.0", "ota.bin")).toBe(true);
+    expect(await store.has("cockpit", "1.3.0", "ota.bin")).toBe(true);
+  });
+
+  it("keeps the newest version when everything is droppable", async () => {
+    const store = makeStore({ keepVersions: 1 });
+    for (const v of ["1.0.0", "1.1.0", "1.10.0"]) {
+      await mkdir(join(base, "fw", "cockpit", v), { recursive: true });
+      await writeFile(join(base, "fw", "cockpit", v, "ota.bin"), "x");
+    }
+    const removed = await store.prune("cockpit");
+    expect(removed).toEqual(["1.0.0", "1.1.0"]);
+    // Version ordering, not string ordering.
+    expect(await store.has("cockpit", "1.10.0", "ota.bin")).toBe(true);
+  });
+
+  it("removes nothing when the cache is within budget", async () => {
+    const store = makeStore({ keepVersions: 3 });
+    for (const v of ["1.0.0", "1.1.0"]) {
+      await mkdir(join(base, "fw", "cockpit", v), { recursive: true });
+      await writeFile(join(base, "fw", "cockpit", v, "ota.bin"), "x");
+    }
+    expect(await store.prune("cockpit")).toEqual([]);
+  });
+
   it("totals and lists what is cached", async () => {
     const store = makeStore();
     await mkdir(join(base, "fw", "cockpit", "1.3.0"), { recursive: true });

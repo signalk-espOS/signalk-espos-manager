@@ -315,16 +315,16 @@ export class FirmwareStore {
     const keep = new Set(protectedVersions);
     const files = (await this.list()).filter((f) => f.app === app);
     const versions = [...new Set(files.map((f) => f.version))];
-    if (versions.length <= this.options.keepVersions) return [];
 
     // Newest last; drop from the front once the protected ones are excluded.
     const { compareVersions } = await import("./manifest.js");
     const ordered = versions.sort((a, b) => compareVersions(a, b));
     const droppable = ordered.filter((v) => !keep.has(v));
-    const surplus = Math.max(
-      0,
-      ordered.length - Math.max(this.options.keepVersions, keep.size),
-    );
+    // keepVersions counts versions kept ON TOP of anything in use. Measuring
+    // the surplus against the whole list instead would let a protected version
+    // eat into the keep budget, so a boat with several devices pinning
+    // versions would silently retain fewer spares than configured.
+    const surplus = Math.max(0, droppable.length - this.options.keepVersions);
     const removed: string[] = [];
     for (const version of droppable.slice(0, surplus)) {
       try {

@@ -182,12 +182,16 @@ export class ManagerService {
   private serverOrigin(): string {
     const config = (
       this.app as unknown as {
-        config?: { settings?: { port?: number; ssl?: boolean } };
+        config?: { settings?: { port?: number } };
       }
     ).config;
     const port = config?.settings?.port ?? 3000;
-    const scheme = config?.settings?.ssl === true ? "https" : "http";
-    return `${scheme}://127.0.0.1:${port}`;
+    // Deliberately plain http on loopback even when the server also serves
+    // https: a self-signed certificate — the common case on a boat, via
+    // signalk-ssl — would fail verification for reasons that have nothing to
+    // do with whether the mount serves, and the probe would then report a
+    // working mirror as broken. The plain listener keeps running alongside.
+    return `http://127.0.0.1:${port}`;
   }
 
   /** Status line plus deltas, after every cycle. */
