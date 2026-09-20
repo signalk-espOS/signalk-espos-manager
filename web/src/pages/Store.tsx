@@ -103,8 +103,12 @@ export function StorePage() {
               {(project.boards ?? []).length > 0 && (
                 <ul class="boards small">
                   {(project.boards ?? []).map((board) => {
-                    const builds = (latest?.builds ?? []).filter(
-                      (b) => b.target === board.target,
+                    // Look across every published release, not just the
+                    // newest: a board whose firmware shipped in an earlier
+                    // release is still supported, and saying "no firmware
+                    // yet" about it is simply wrong.
+                    const builds = (project.releases ?? []).flatMap((r) =>
+                      (r.builds ?? []).filter((b) => b.target === board.target),
                     );
                     const named = builds.some((b) => b.boardId === board.id);
                     const ambiguous =
