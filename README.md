@@ -4,9 +4,10 @@ Finds the [espOS](https://github.com/signalk-espOS/espOS) devices on your boat,
 keeps their firmware up to date from a project registry, and flashes a new
 board from the browser.
 
-> **Status: early development.** Device discovery, the firmware mirror and
-> update resolution work. Installing an update and the USB flasher are still
-> being built. See [Roadmap](#roadmap).
+> **Status: works, not yet proven on hardware.** Everything below is built and
+> tested against real devices and a real Signal K server, but no firmware has
+> been written to a board by this plugin yet. Treat the first update and the
+> first flash as things to watch.
 
 ## What it does
 
@@ -63,11 +64,20 @@ anywhere. With the mirror enabled, devices never contact the internet at all.
 | Phase | What it adds                                       | State |
 | ----- | -------------------------------------------------- | ----- |
 | 0     | Device discovery and the fleet list                | done  |
-| 1a    | Firmware mirror and the manifest devices fetch     | done  |
-| 1b    | Update resolution from the registry                | done  |
-| 1c    | Installing an update, with progress and rollback   | next  |
-| 2     | The project store UI, with per-board compatibility |       |
-| 3     | The browser USB flasher for new boards             |       |
+| 1     | Firmware mirror, manifests, and installing updates | done  |
+| 2     | The web interface                                  | done  |
+| 3     | The browser USB flasher for new boards             | done  |
+
+### Not done yet
+
+- **Nothing has been flashed or updated on real hardware by this plugin.** The
+  paths are tested against the device's own parser and the flashing library's
+  own contracts, but a board has not been written to.
+- **The hosted flasher is not deployed.** Flashing over USB needs a secure
+  page, so a boat server on plain http links out to a hosted copy that does
+  not exist yet.
+- **The firmware registry is not published.** The plugin reads one; nobody is
+  serving it.
 
 ## Licence
 
