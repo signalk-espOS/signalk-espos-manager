@@ -157,6 +157,39 @@ describe("probeDevice against a keyed device", () => {
     expect(device.authAttempts).toBe(2);
   });
 
+  it("reports an untested key as unknown, not authorized", async () => {
+    // Review finding: a held-but-unproven key was reported as "authorized",
+    // which shows a green device whose key the next OTA may well refuse.
+    device = await startFakeDevice({ key: "the-right-key" });
+    const keys = await freshKeys();
+    keys.setFleetKey("the-right-key");
+    const identity = identityFor(device);
+
+    const first = await probeDevice({ identity, keys });
+    expect(first.auth).toBe("authorized"); // proven by a successful call
+
+    // A successful probe makes two authenticated calls (system/info and
+    // ota/status), so count them before the second probe rather than assuming
+    // one request per cycle.
+    const afterFirst = device.authAttempts;
+
+    // Second probe in the same cycle: the attempt is spent, so nothing has
+    // been proven this time round and no further request is made.
+    const second = await probeDevice({ identity, keys });
+    expect(second.auth).toBe("unknown");
+    expect(device.authAttempts).toBe(afterFirst);
+  });
+
+  it("still says needs-key when no key is held at all", async () => {
+    device = await startFakeDevice({ key: "some-key" });
+    const keys = await freshKeys();
+    const identity = identityFor(device);
+    // No fleet key, no device key: one probe spends nothing and reports need.
+    const result = await probeDevice({ identity, keys });
+    expect(result.auth).toBe("needs-key");
+    expect(device.authAttempts).toBe(0);
+  });
+
   it("backs off on 429 and stays quiet until the lockout expires", async () => {
     device = await startFakeDevice({
       key: "k",
@@ -232,6 +265,26 @@ describe("KeyStore persistence", () => {
     const keys = new KeyStore({ dataDir });
     await keys.load();
     expect(keys.keyFor("2be9")).toBeUndefined();
+  });
+
+  it("does not lose a key written while the first load is still pending", async () => {
+    // Review finding: the boolean guard was set before the await, so a
+    // concurrent setKeyFor could be overwritten by the arriving disk contents.
+    const { writeFile } = await import("node:fs/promises");
+    await writeFile(
+      join(dataDir, "keys.json"),
+      JSON.stringify({
+        version: 1,
+        keys: { old1: { key: "from-disk", setAt: 1, source: "manual" } },
+      }),
+    );
+    const keys = new KeyStore({ dataDir });
+    const loading = keys.load(); // deliberately not awaited yet
+    const writing = keys.setKeyFor("2be9", "just-typed");
+    await Promise.all([loading, writing]);
+
+    expect(keys.keyFor("2be9")).toBe("just-typed");
+    expect(keys.keyFor("old1")).toBe("from-disk");
   });
 
   it("removes a key on request", async () => {

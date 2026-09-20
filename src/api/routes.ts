@@ -146,10 +146,17 @@ export function registerRoutes(
     guard((req, res) => {
       void (async () => {
         const id = req.params?.id ?? "";
-        const service = getService();
-        await service.getKeys()?.removeKeyFor(id);
-        const removed = service.fleet.forget(id);
-        res.json({ ok: removed });
+        try {
+          const service = getService();
+          // Deleting the key touches the disk and can fail (permissions, a
+          // full card). Unhandled, the rejection escapes this un-awaited IIFE
+          // and the request simply never answers.
+          await service.getKeys()?.removeKeyFor(id);
+          const removed = service.fleet.forget(id);
+          res.json({ ok: removed });
+        } catch (error) {
+          res.status(500).json({ error: errorMessage(error) });
+        }
       })();
     }),
   );

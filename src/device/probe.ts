@@ -108,11 +108,15 @@ export async function probeDevice(options: ProbeOptions): Promise<ProbeResult> {
       };
     }
     if (!keys.canAttempt(identity.id)) {
+      // We hold a key but have already spent this cycle's attempt, so it is
+      // untested. Reporting "authorized" here would show a green device whose
+      // key may well be refused by the next OTA; "unknown" is the truth until
+      // a call actually succeeds.
       return {
         ok: true,
         address,
         snapshot,
-        auth: keys.hasKey(identity.id) ? "authorized" : "needs-key",
+        auth: keys.hasKey(identity.id) ? "unknown" : "needs-key",
       };
     }
 

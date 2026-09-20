@@ -46,7 +46,8 @@ export class KeyStore {
   private readonly now: () => number;
   private keys: Record<DeviceId, StoredKey> = {};
   private fleet = "";
-  private loaded = false;
+  /** Cached in-flight read, so concurrent callers share one load. */
+  private loading?: Promise<void>;
   /** Device -> epoch ms until which no authenticated call may be made. */
   private readonly lockouts = new Map<DeviceId, number>();
   /** Device -> cycle token of the last attempt, so we try at most once. */
@@ -57,9 +58,21 @@ export class KeyStore {
     this.now = options.now ?? Date.now;
   }
 
+  /**
+   * Read the stored keys, at most once.
+   *
+   * The in-flight promise is cached rather than a boolean flag being set
+   * before the await: with a flag, a second caller returns immediately while
+   * the first read is still pending, and a setKeyFor() in that window writes
+   * a key that the arriving disk contents then overwrite — silently losing a
+   * key the user had just entered.
+   */
   async load(): Promise<void> {
-    if (this.loaded) return;
-    this.loaded = true;
+    this.loading ??= this.readFromDisk();
+    return this.loading;
+  }
+
+  private async readFromDisk(): Promise<void> {
     try {
       const raw: unknown = JSON.parse(await readFile(this.path, "utf8"));
       if (
