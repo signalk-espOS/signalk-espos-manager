@@ -289,3 +289,19 @@ code {
   padding: 0.1rem 0.3rem;
   border-radius: 4px;
 }
+
+.boards {
+  list-style: none;
+  padding: 0;
+  margin: 0.4rem 0;
+}
+.boards li {
+  padding: 0.25rem 0;
+  border-top: 1px solid var(--line);
+}
+.boards li:first-child {
+  border-top: none;
+}
+.board-name {
+  font-weight: 500;
+}

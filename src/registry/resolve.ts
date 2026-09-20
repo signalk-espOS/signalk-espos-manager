@@ -96,6 +96,7 @@ function buildForTarget(
   release: RegistryRelease,
   target: Target | undefined,
   board: string | undefined,
+  boardsOnTarget: number,
 ): RegistryBuild | undefined {
   // No established target means no offer. Treating undefined as "anything
   // matches" hands out whichever build happens to be listed first — a C6 image
@@ -104,14 +105,23 @@ function buildForTarget(
   if (target === undefined) return undefined;
   const candidates = release.builds.filter((build) => build.target === target);
   if (candidates.length === 0) return undefined;
-  // A build naming this exact board wins over a board-agnostic one.
+
+  // A build naming this exact board is unambiguous.
   const exact = candidates.find(
     (build) => board !== undefined && build.boardId === board,
   );
   if (exact !== undefined) return exact;
+
+  // A build that names no board is only safe when the project supports a
+  // single board on this chip. Where it declares several, that one binary was
+  // built for exactly one of them and espOS cannot tell them apart — it
+  // matches an update on app, target and channel, never on board. Offering it
+  // anyway is how a panel is sent firmware for a different display and comes
+  // back with a black screen, which reads as dead hardware rather than a
+  // wrong download. Verified the hard way on a Waveshare Touch-LCD-X.
   const agnostic = candidates.find((build) => build.boardId === undefined);
-  if (agnostic !== undefined) return agnostic;
-  // Only board-specific builds, none of them this board: declining is right.
+  if (agnostic !== undefined && boardsOnTarget <= 1) return agnostic;
+
   return undefined;
 }
 
@@ -150,8 +160,17 @@ export function matchDevice(
     compareVersions(b.version, a.version),
   );
 
+  const boardsOnTarget = (project.boards ?? []).filter(
+    (board) => board.target === options.target,
+  ).length;
+
   for (const release of ordered) {
-    const build = buildForTarget(release, options.target, options.board);
+    const build = buildForTarget(
+      release,
+      options.target,
+      options.board,
+      boardsOnTarget,
+    );
     if (build === undefined) continue;
     if (build.otaUrl === undefined) {
       // A release with only a full-flash image cannot be installed over the
@@ -203,6 +222,24 @@ export function matchDevice(
       // A git-describe running version compares below its own release, so the
       // "update" would be a downgrade unless the user says otherwise.
       needsConfirmation: !isReleaseVersion(options.runningVersion),
+    };
+  }
+
+  // Say which of the two it is: "nothing built for your chip" and "several
+  // boards share your chip and the build does not say which it is for" need
+  // different actions from the reader.
+  if (
+    options.target !== undefined &&
+    boardsOnTarget > 1 &&
+    options.board === undefined
+  ) {
+    return {
+      requiresUsb: true,
+      reason:
+        `${project.name} supports ${boardsOnTarget} different boards with the ` +
+        `${options.target} chip, and the published firmware does not say which ` +
+        `one it was built for. Installing the wrong one usually leaves the ` +
+        `screen black, so it is not offered over the air.`,
     };
   }
 

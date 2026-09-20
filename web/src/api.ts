@@ -129,6 +129,16 @@ export interface MirrorDto {
   }[];
 }
 
+export interface RegistryBoardDto {
+  id: string;
+  target: string;
+  /** The name someone would recognise on a shop page. */
+  name: string;
+  notes?: string;
+  buyUrl?: string;
+  flashMinBytes?: number;
+}
+
 export interface RegistryDto {
   projects: {
     id: string;
@@ -137,9 +147,15 @@ export interface RegistryDto {
     summary?: string;
     repo: string;
     targets: string[];
+    boards?: RegistryBoardDto[];
     official?: boolean;
     deprecated?: boolean | string;
-    releases?: { version: string; channel: string; notesUrl?: string }[];
+    releases?: {
+      version: string;
+      channel: string;
+      notesUrl?: string;
+      builds?: { target: string; boardId?: string; mergedUrl?: string }[];
+    }[];
   }[];
   stale: boolean;
   fetchedAt?: string;

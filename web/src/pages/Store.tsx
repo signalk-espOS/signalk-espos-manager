@@ -88,9 +88,71 @@ export function StorePage() {
               </h3>
               {project.summary !== undefined && <p>{project.summary}</p>}
               <p class="muted small">
-                {project.targets.join(", ")}
-                {latest !== undefined && ` · latest ${latest.version}`}
+                {latest !== undefined
+                  ? `Latest ${latest.version}`
+                  : "No release yet"}
               </p>
+
+              {/*
+                Boards by name, not by chip. "esp32p4" tells nobody which
+                panel to buy, and it does not tell an owner whether the thing
+                on their desk is supported. Each board says whether firmware
+                for it is actually published, because a supported board with
+                no build is a real and common state.
+              */}
+              {(project.boards ?? []).length > 0 && (
+                <ul class="boards small">
+                  {(project.boards ?? []).map((board) => {
+                    // Look across every published release, not just the
+                    // newest: a board whose firmware shipped in an earlier
+                    // release is still supported, and saying "no firmware
+                    // yet" about it is simply wrong.
+                    const builds = (project.releases ?? []).flatMap((r) =>
+                      (r.builds ?? []).filter((b) => b.target === board.target),
+                    );
+                    const named = builds.some((b) => b.boardId === board.id);
+                    const ambiguous =
+                      builds.some((b) => b.boardId === undefined) &&
+                      (project.boards ?? []).filter(
+                        (o) => o.target === board.target,
+                      ).length > 1;
+                    return (
+                      <li key={board.id}>
+                        <span class="board-name">{board.name}</span>{" "}
+                        {named ? (
+                          <span class="pill ok">firmware available</span>
+                        ) : ambiguous ? (
+                          <span
+                            class="pill warn"
+                            title="The published build does not say which board it was made for, so it cannot be offered safely."
+                          >
+                            build not identified
+                          </span>
+                        ) : builds.length > 0 ? (
+                          <span class="pill ok">firmware available</span>
+                        ) : (
+                          <span class="pill">no firmware yet</span>
+                        )}
+                        {board.buyUrl !== undefined && (
+                          <>
+                            {" "}
+                            <a
+                              href={board.buyUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                            >
+                              where to buy
+                            </a>
+                          </>
+                        )}
+                        {board.notes !== undefined && (
+                          <div class="muted">{board.notes}</div>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
               {latest === undefined && (
                 // "installed" plus "nothing published" reads as a
                 // contradiction unless the reason is stated: the project is
