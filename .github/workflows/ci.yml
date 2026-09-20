@@ -1,0 +1,26 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    # Pinned to the v2.32.0 commit rather than @master: a floating ref lets an
+    # upstream change break this repo's CI with no commit here, and the pin is
+    # what makes a green run reproducible. Bump it deliberately.
+    uses: SignalK/signalk-server/.github/workflows/plugin-ci.yml@0495a4a94acd69443d94498b3b431738c2ba4eff
+    with:
+      node-versions: '["22", "24"]'
+      build-command: "npm run build"
+      format-check-command: "npm run ci-lint"
+      # armv7 (Cerbo GX) runs under QEMU and this plugin has no native code,
+      # so the desktop and arm64 matrix already covers what could break.
+      enable-armv7: false
+      # Installs the packed tarball into a real server with --ignore-scripts,
+      # enables the plugin and starts the server. This is the one thing the
+      # unit tests cannot reach: that the ESM entry point actually loads and
+      # start() survives a real ServerAPI.
+      enable-signalk-integration: true
+      signalk-server-versions: '["2.32.0", "latest"]'
