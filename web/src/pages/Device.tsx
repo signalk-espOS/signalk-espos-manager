@@ -63,9 +63,38 @@ export function DevicePage() {
           {device.chip !== undefined && (
             <>
               <dt>Chip</dt>
+              <dd>{device.chip}</dd>
+            </>
+          )}
+          {/*
+            Board on its own row rather than tacked onto Chip: it is the
+            answer to "what hardware is this", and the vendor/model string is
+            long enough that sharing a line with the chip truncates it.
+          */}
+          {device.board !== undefined && (
+            <>
+              <dt>Board</dt>
+              <dd>{device.board}</dd>
+            </>
+          )}
+          {device.mac !== undefined && (
+            <>
+              <dt>MAC</dt>
+              <dd>{device.mac}</dd>
+            </>
+          )}
+          {(device.flashBytes !== undefined ||
+            device.psramBytes !== undefined) && (
+            <>
+              <dt>Memory</dt>
               <dd>
-                {device.chip}
-                {device.board !== undefined && ` · ${device.board}`}
+                {device.flashBytes !== undefined &&
+                  `${Math.round(device.flashBytes / 1048576)} MB flash`}
+                {device.flashBytes !== undefined &&
+                  device.psramBytes !== undefined &&
+                  " · "}
+                {device.psramBytes !== undefined &&
+                  `${Math.round(device.psramBytes / 1048576)} MB PSRAM`}
               </dd>
             </>
           )}

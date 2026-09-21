@@ -114,6 +114,14 @@ export function FleetPage() {
                   {device.version !== undefined && ` ${device.version}`}
                   {device.target !== undefined && ` · ${device.target}`}
                 </span>
+                {/*
+                    The board, not just the chip. "esp32p4" does not tell
+                    anyone which panel this is, and two boards on that chip
+                    take different firmware -- so the name is the useful fact.
+                  */}
+                {device.board !== undefined && (
+                  <span class="device-meta muted">{device.board}</span>
+                )}
                 <span class="device-meta muted">
                   {device.addresses[0] ?? "no address"} · {state.text}
                   {device.esposVersion !== undefined &&
@@ -137,6 +145,27 @@ export function FleetPage() {
                   </span>
                 )}
               </button>
+              {/*
+                Sibling of the row button, not inside it: an <a> nested in a
+                <button> is invalid HTML and browsers treat the click
+                inconsistently. Opens the device's OWN espOS web UI -- WiFi,
+                config, logs, core dump -- which is where you go for the
+                things this plugin deliberately does not do.
+              */}
+              {device.addresses[0] !== undefined && (
+                <a
+                  class="device-open"
+                  href={`http://${device.addresses[0]}${
+                    device.port === 80 ? "" : `:${device.port}`
+                  }/`}
+                  target="_blank"
+                  rel="noreferrer"
+                  title="Open this device's own web UI"
+                  aria-label="Open this device's own web UI in a new tab"
+                >
+                  ↗
+                </a>
+              )}
             </li>
           );
         })}

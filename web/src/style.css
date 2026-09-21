@@ -203,6 +203,19 @@ input[type="text"] {
   margin: 0;
 }
 
+/* A device row is the tappable summary plus the open-in-new-tab link beside
+   it. Without this they stack, because the link is a sibling of the button
+   rather than inside it. */
+.devices > li {
+  display: flex;
+  align-items: stretch;
+  gap: 4px;
+}
+.devices > li > .device-main {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
 .device-main {
   display: flex;
   flex-direction: column;
@@ -304,4 +317,25 @@ code {
 }
 .board-name {
   font-weight: 500;
+}
+
+/* The "open the device's own web UI" affordance on a fleet row. Sits beside
+   the row button rather than inside it (an <a> in a <button> is invalid HTML),
+   so it needs its own hit area -- 44px keeps it thumb-sized on a phone at the
+   helm, which is where this list gets used. */
+.device-open {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  min-height: 44px;
+  text-decoration: none;
+  font-size: 1.1rem;
+  color: var(--muted, #8a94a6);
+  border-radius: 6px;
+}
+.device-open:hover,
+.device-open:focus-visible {
+  color: var(--fg, #e8ecf3);
+  background: rgba(255, 255, 255, 0.06);
 }
