@@ -1,4 +1,5 @@
 import { api, isJobFinished, type DeviceDto } from "../api.js";
+import { deviceUrl } from "../deviceUrl.js";
 import { useStore } from "../store.js";
 
 /** Human-readable reachability, since the raw words are jargon. */
@@ -155,9 +156,7 @@ export function FleetPage() {
               {device.addresses[0] !== undefined && (
                 <a
                   class="device-open"
-                  href={`http://${device.addresses[0]}${
-                    device.port === 80 ? "" : `:${device.port}`
-                  }/`}
+                  href={deviceUrl(device.addresses[0], device.port)}
                   target="_blank"
                   rel="noreferrer"
                   title="Open this device's own web UI"
