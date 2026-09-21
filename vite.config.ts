@@ -10,6 +10,12 @@ import preact from "@preact/preset-vite";
 export default defineConfig({
   root: "web",
   base: "/signalk-espos-manager/",
+  // The icon lives at the package root because that is where Signal K's
+  // plugin list reads it from (`signalk.appIcon` in package.json). The webapp
+  // asks for it under the webapp mount, which serves `public/`, so without
+  // this the page's <link rel="icon"> 404s -- one file, two consumers, and
+  // copying it beats keeping a second copy in step by hand.
+  publicDir: "../static",
   plugins: [preact()],
   build: {
     // Two entries: the plugin's webapp and the standalone flasher. The
