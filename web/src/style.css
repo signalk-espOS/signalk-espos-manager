@@ -380,3 +380,73 @@ code {
   padding: 0 12px;
   font-size: 0.85rem;
 }
+
+/* Board-first chooser. The board is the primary key here: someone arriving
+   with new hardware knows what they bought and not which project supports it,
+   so the board is the heading and the projects are what sits under it. */
+.browse-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.linkish {
+  background: none;
+  border: 0;
+  padding: 0;
+  font-size: 0.85rem;
+  color: var(--accent, #6aa9ff);
+  cursor: pointer;
+  text-decoration: underline;
+}
+.chip-filter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 8px 0 12px;
+}
+.chip-filter .pill {
+  cursor: pointer;
+  border: 0;
+}
+.board-entry {
+  padding: 10px 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+.board-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.board-name {
+  font-weight: 600;
+}
+.offers {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.offers > li > button {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  width: 100%;
+  text-align: left;
+  padding: 10px 12px;
+}
+/* A project that cannot be written to this board keeps its place and states
+   why, rather than vanishing: an absent row reads as "nobody supports this". */
+.offer-blocked {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.03);
+}
