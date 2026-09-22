@@ -92,8 +92,28 @@ export class DeviceClient {
         signal: controller.signal,
       });
       if (!response.ok) {
+        // espOS answers a rejected config with {"error","path","message"} --
+        // an unknown key, which is what firmware too old for a setting says.
+        // That is the whole explanation, and discarding it leaves a bare
+        // "HTTP 400" to be guessed at. Best-effort: a device that answers
+        // with no body, or with something that is not JSON, still gets the
+        // plain status.
+        let detail = "";
+        try {
+          const body = (await response.json()) as unknown;
+          if (typeof body === "object" && body !== null) {
+            const b = body as Record<string, unknown>;
+            const msg = typeof b["message"] === "string" ? b["message"] : "";
+            const where = typeof b["path"] === "string" ? b["path"] : "";
+            if (msg !== "") {
+              detail = where === "" ? `: ${msg}` : `: ${where} \u2014 ${msg}`;
+            }
+          }
+        } catch {
+          // No body, or not JSON. The status is all we have.
+        }
         throw new DeviceHttpError(
-          `device answered HTTP ${response.status} for ${path}`,
+          `device answered HTTP ${response.status} for ${path}${detail}`,
           response.status,
           retryAfterSeconds(response),
         );
