@@ -308,3 +308,66 @@ describe("targetsInCatalogue", () => {
     ]);
   });
 });
+
+/**
+ * A browser-readable URL is separate from the release URL.
+ *
+ * GitHub serves release downloads with no Access-Control-Allow-Origin, on the
+ * redirect and on its target, so `mergedUrl` cannot be fetched from a web page
+ * at all — measured 2026-09-23 against a real release asset. A project that
+ * mirrors its images to a branch also publishes `mergedWebUrl`, served by
+ * raw.githubusercontent, which does send the header.
+ */
+describe("browser-readable urls", () => {
+  const withMirror: CatalogueProject = {
+    id: "m",
+    name: "Mirrored",
+    repo: "example/m",
+    boards: [{ id: "c6", target: "esp32c6", name: "C6" }],
+    releases: [
+      {
+        version: "1.0.0",
+        channel: "stable",
+        builds: [
+          {
+            target: "esp32c6",
+            boardId: "c6",
+            mergedUrl: "https://github.com/example/m/releases/download/x.bin",
+            mergedWebUrl:
+              "https://raw.githubusercontent.com/example/m/release-assets/v1.0.0/x.bin",
+            mergedBytes: 1_000_000,
+          },
+        ],
+      },
+    ],
+  };
+
+  it("carries both urls onto the build", () => {
+    const build = boardCatalogue([withMirror])[0]?.offers[0]?.build;
+    expect(build?.mergedUrl).toContain("releases/download");
+    expect(build?.mergedWebUrl).toContain("raw.githubusercontent.com");
+  });
+
+  it("leaves the web url undefined when a project publishes none", () => {
+    const without: CatalogueProject = {
+      ...withMirror,
+      releases: [
+        {
+          ...withMirror.releases![0]!,
+          builds: [
+            {
+              ...withMirror.releases![0]!.builds[0]!,
+              mergedWebUrl: undefined,
+            },
+          ],
+        },
+      ],
+    };
+    const build = boardCatalogue([without])[0]?.offers[0]?.build;
+    // Still flashable-by-registry: the plugin can install it server-side. Only
+    // the browser cannot, and the page says so rather than guessing a URL that
+    // would always fail.
+    expect(build?.mergedUrl).toBeDefined();
+    expect(build?.mergedWebUrl).toBeUndefined();
+  });
+});

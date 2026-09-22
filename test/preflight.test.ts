@@ -11,6 +11,7 @@ import { describe, expect, it } from "vitest";
 import {
   BOOTLOADER_FLASH_OFFSET,
   CHIP_NAME_TO_TARGET,
+  FLASH_SIZE_BY_ID,
   ESP_IMAGE_MAGIC,
   targetFromChipName,
 } from "../web/src/flash/chips.js";
@@ -257,5 +258,140 @@ describe("where the flasher can run", () => {
     // debugging "why is there no flash button" will find it.
     expect(secureContexts).toContain("localhost");
     expect(insecureContexts).not.toContain("localhost");
+  });
+});
+
+/**
+ * The checks that need no download must still report without one.
+ *
+ * Live failure, 2026-09-22: a C5 devkit was connected, the wrong row was
+ * clicked, and the page said only "failed to fetch". The chip and fit checks
+ * would both have caught it, but the flasher downloaded the image header
+ * BEFORE running any check, so a network failure threw first and the useful
+ * diagnosis never ran. GitHub serves release assets without CORS headers, so
+ * that fetch fails for every project — which made the ordering not an edge
+ * case but the normal path.
+ */
+describe("checks that do not need the image", () => {
+  it("still catches the wrong chip when the image could not be read", () => {
+    const report = preflight(
+      input({
+        detectedTarget: "esp32c5",
+        buildTarget: "esp32",
+        imageHead: undefined,
+      }),
+    );
+    const chip = report.checks.find((c) => c.id === "chip");
+    expect(chip?.ok).toBe(false);
+    expect(chip?.message).toContain("ESP32-C5");
+    expect(report.canWrite).toBe(false);
+  });
+
+  it("still catches an image too big for the module without the image", () => {
+    const report = preflight(
+      input({
+        detectedTarget: "esp32c5",
+        buildTarget: "esp32c5",
+        detectedFlashBytes: 4 * 1024 * 1024,
+        imageBytes: 6_225_920,
+        imageHead: undefined,
+      }),
+    );
+    const fit = report.checks.find((c) => c.id === "fit");
+    expect(fit?.ok).toBe(false);
+    expect(report.canWrite).toBe(false);
+  });
+
+  it("does not claim the image is wrong merely because it is absent", () => {
+    // Absent is not invalid: saying "bad image" for a failed download would
+    // send someone hunting a firmware problem that does not exist.
+    const report = preflight(input({ imageHead: undefined }));
+    const image = report.checks.find((c) => c.id === "image");
+    expect(image?.ok).toBe(true);
+    expect(image?.message).toMatch(/not inspected/i);
+  });
+});
+
+/**
+ * An assumed flash size must not block a write.
+ *
+ * esptool-js answers "4MB" both when it read 4 MB and when it could not decode
+ * the flash id at all. Measured on a real Waveshare ESP32-C5 (2026-09-23): the
+ * browser reported 4 MB, while `esptool flash-id` on the same board over the
+ * same cable read manufacturer 0x46, device 0x4018 — 16 MB. Treating that
+ * guess as fact refused a 5.94 MB image the board had 10 MB of room for.
+ */
+describe("flash size that could not be read", () => {
+  const C5_IMAGE = 6_225_920; // the real ble-gateway esp32c5 merged image
+
+  it("does not refuse a write when the size was only assumed", () => {
+    const report = preflight(
+      input({
+        detectedTarget: "esp32c5",
+        buildTarget: "esp32c5",
+        detectedFlashBytes: 4 * 1024 * 1024,
+        flashSizeDetected: false,
+        imageBytes: C5_IMAGE,
+        imageHead: mergedImage("esp32c5"),
+      }),
+    );
+    const fit = report.checks.find((c) => c.id === "fit");
+    expect(fit?.ok).toBe(true);
+    expect(fit?.message).toMatch(/could not be read/i);
+    expect(report.canWrite).toBe(true);
+  });
+
+  it("still refuses when the size was genuinely read", () => {
+    const report = preflight(
+      input({
+        detectedTarget: "esp32c5",
+        buildTarget: "esp32c5",
+        detectedFlashBytes: 4 * 1024 * 1024,
+        flashSizeDetected: true,
+        imageBytes: C5_IMAGE,
+        imageHead: mergedImage("esp32c5"),
+      }),
+    );
+    expect(report.checks.find((c) => c.id === "fit")?.ok).toBe(false);
+    expect(report.canWrite).toBe(false);
+  });
+
+  it("says so even when an assumed size is large enough", () => {
+    const report = preflight(
+      input({
+        detectedTarget: "esp32c5",
+        buildTarget: "esp32c5",
+        detectedFlashBytes: 16 * 1024 * 1024,
+        flashSizeDetected: false,
+        imageBytes: C5_IMAGE,
+        imageHead: mergedImage("esp32c5"),
+      }),
+    );
+    expect(report.checks.find((c) => c.id === "fit")?.message).toMatch(
+      /assumed/i,
+    );
+  });
+
+  it("treats an unstated flag as detected, so old callers are unchanged", () => {
+    const report = preflight(
+      input({
+        detectedFlashBytes: 4 * 1024 * 1024,
+        imageBytes: C5_IMAGE,
+      }),
+    );
+    expect(report.checks.find((c) => c.id === "fit")?.ok).toBe(false);
+  });
+});
+
+/** The table we decode JEDEC ids with must agree with the real board. */
+describe("FLASH_SIZE_BY_ID", () => {
+  it("decodes the Waveshare C5's id as 16 MB", () => {
+    // esptool on the real board: Manufacturer 46, Device 4018.
+    const jedec = 0x46 | (0x40 << 8) | (0x18 << 16);
+    expect(FLASH_SIZE_BY_ID[(jedec >> 16) & 0xff]).toBe(16 * 1024 * 1024);
+  });
+
+  it("has no entry for an id esptool-js would fall back on", () => {
+    expect(FLASH_SIZE_BY_ID[0x00]).toBeUndefined();
   });
 });

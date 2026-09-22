@@ -42,6 +42,16 @@ import type { FlashBuild, Target } from "./types.js";
 export interface CatalogueBuild {
   target: string;
   mergedUrl?: string;
+  /**
+   * The same image at a URL a browser may actually fetch.
+   *
+   * GitHub serves release downloads with no Access-Control-Allow-Origin, so
+   * `mergedUrl` cannot be read from a web page at all -- only the plugin,
+   * which fetches server-side, can use it. A project that mirrors its images
+   * to a branch (`webAssetsBranch` in the registry) also gets this one, served
+   * by raw.githubusercontent, which does send the header.
+   */
+  mergedWebUrl?: string;
   mergedBytes?: number;
   otaUrl?: string;
   boardId?: string;
@@ -156,6 +166,7 @@ function offerFor(
             version: release.version,
             target: board.target as Target,
             mergedUrl: named.mergedUrl,
+            mergedWebUrl: named.mergedWebUrl,
             mergedBytes: named.mergedBytes,
             boardId: named.boardId,
             unsigned: named.unsigned,
@@ -192,6 +203,7 @@ function offerFor(
             version: release.version,
             target: board.target as Target,
             mergedUrl: agnostic.mergedUrl,
+            mergedWebUrl: agnostic.mergedWebUrl,
             mergedBytes: agnostic.mergedBytes,
             boardId: undefined,
             unsigned: agnostic.unsigned,

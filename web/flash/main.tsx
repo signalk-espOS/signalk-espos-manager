@@ -38,6 +38,7 @@ interface RegistryBuild {
   target: string;
   mergedUrl?: string;
   mergedBytes?: number;
+  mergedWebUrl?: string;
   otaUrl?: string;
   boardId?: string;
   unsigned?: boolean;
@@ -74,6 +75,38 @@ interface RegistryProject {
  * you want and are after a specific release.
  */
 type Browse = "board" | "build";
+
+/** The project publishes no URL a browser is allowed to read. */
+class NoWebUrlError extends Error {
+  constructor() {
+    super("no browser-readable copy of this firmware is published");
+    this.name = "NoWebUrlError";
+  }
+}
+
+/** A response that arrived and said no, as opposed to one that never came. */
+class HttpStatusError extends Error {
+  constructor(readonly status: number) {
+    super(`HTTP ${status}`);
+    this.name = "HttpStatusError";
+  }
+}
+
+/**
+ * The URL this page may actually fetch, or undefined.
+ *
+ * GitHub release downloads carry no Access-Control-Allow-Origin, so
+ * `mergedUrl` is unusable from a browser however valid it looks. Only a
+ * project that mirrors its images to a branch has a URL a page can read.
+ * Returning undefined rather than falling back keeps the failure honest: the
+ * fallback would always fail, and it would look like a network fault.
+ */
+function fetchableUrl(build: {
+  mergedUrl: string;
+  mergedWebUrl?: string;
+}): string | undefined {
+  return build.mergedWebUrl;
+}
 
 function mb(bytes: number | undefined): string {
   if (bytes === undefined) return "";
@@ -119,12 +152,30 @@ function App() {
   const [head, setHead] = useState<Uint8Array | undefined>(undefined);
   const [chipName, setChipName] = useState<string | undefined>(undefined);
   const [nativeUsb, setNativeUsb] = useState(false);
+  // What the chip says about itself, shown so someone can confirm the page is
+  // talking to the board they think it is.
+  const [profile, setProfile] = useState<
+    | {
+        description?: string;
+        features?: string[];
+        flashBytes?: number;
+        flashSizeDetected: boolean;
+        mac?: string;
+      }
+    | undefined
+  >(undefined);
   const [progress, setProgress] = useState<
     { written: number; total: number; startedAt: number } | undefined
   >(undefined);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | undefined>(undefined);
   const [finished, setFinished] = useState(false);
+  // Separate from `error`: a download that fails is not the same as the page
+  // breaking, and it needs its own explanation because the cause is almost
+  // always the same one and is not the user's fault.
+  const [downloadError, setDownloadError] = useState<
+    { message: string; blocked: boolean; noMirror: boolean } | undefined
+  >(undefined);
   const [browse, setBrowse] = useState<Browse>("board");
   const [chipFilter, setChipFilter] = useState<Target | "all">("all");
 
@@ -150,7 +201,7 @@ function App() {
 
   const runChecks = (
     chosen: FlashBuild,
-    imageHead: Uint8Array,
+    imageHead: Uint8Array | undefined,
     board: string | undefined,
   ): void => {
     const connection = activeConnection();
@@ -159,6 +210,7 @@ function App() {
         detectedTarget: connection?.target,
         buildTarget: chosen.target,
         detectedFlashBytes: connection?.flashBytes,
+        flashSizeDetected: connection?.flashSizeDetected,
         imageBytes: chosen.mergedBytes ?? 0,
         imageHead,
         writeAddress: 0,
@@ -172,22 +224,58 @@ function App() {
   const onPick = async (chosen: FlashBuild): Promise<void> => {
     setBuild(chosen);
     setError(undefined);
+    setDownloadError(undefined);
     setBusy(true);
     try {
       const connection = await connect(() => {});
       setChipName(connection.chipName);
       setNativeUsb(connection.nativeUsb);
-      const response = await fetch(chosen.mergedUrl, {
-        headers: { Range: "bytes=0-65535" },
+      setProfile({
+        description: connection.chipDescription,
+        features: connection.features,
+        flashBytes: connection.flashBytes,
+        flashSizeDetected: connection.flashSizeDetected,
+        mac: connection.mac,
       });
-      if (!response.ok) {
-        throw new Error(
-          `Could not read the firmware header: HTTP ${response.status}`,
-        );
+
+      // Check what the chip already told us BEFORE touching the network. The
+      // chip and fit checks need no download, and they are the two that catch
+      // the mistakes worth catching -- wrong board picked from the list, image
+      // too big for this module. Fetching first meant a network failure threw
+      // before any of them ran, so someone who clicked the wrong row was told
+      // "failed to fetch" rather than "this is an ESP32-C5, that firmware is
+      // for an ESP32".
+      runChecks(chosen, undefined, undefined);
+
+      // Only now read the image header, and treat failure as one more failed
+      // check rather than an exception that discards the checks above.
+      try {
+        const url = fetchableUrl(chosen);
+        if (url === undefined) {
+          throw new NoWebUrlError();
+        }
+        const response = await fetch(url, {
+          headers: { Range: "bytes=0-65535" },
+        });
+        if (!response.ok) {
+          throw new HttpStatusError(response.status);
+        }
+        const imageHead = new Uint8Array(await response.arrayBuffer());
+        setHead(imageHead);
+        runChecks(chosen, imageHead, undefined);
+      } catch (e) {
+        setHead(undefined);
+        // A server that answered tells us something specific; a request the
+        // browser refused to make, or that never arrived, rejects with a
+        // TypeError carrying no response at all. Only the second case is the
+        // one the CORS explanation fits, and guessing wrong sends someone
+        // looking in the wrong place.
+        setDownloadError({
+          message: e instanceof Error ? e.message : String(e),
+          blocked: !(e instanceof HttpStatusError),
+          noMirror: e instanceof NoWebUrlError,
+        });
       }
-      const imageHead = new Uint8Array(await response.arrayBuffer());
-      setHead(imageHead);
-      runChecks(chosen, imageHead, undefined);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -200,7 +288,9 @@ function App() {
     setBusy(true);
     setError(undefined);
     try {
-      const response = await fetch(build.mergedUrl);
+      const url = fetchableUrl(build);
+      if (url === undefined) throw new NoWebUrlError();
+      const response = await fetch(url);
       if (!response.ok)
         throw new Error(`Download failed: HTTP ${response.status}`);
       const image = await response.arrayBuffer();
@@ -537,10 +627,37 @@ function App() {
                 {build.projectName} {build.version}
               </h3>
               {chipName !== undefined && (
-                <p class="muted small">
-                  Connected to {chipName}
-                  {nativeUsb && " over its native USB port"}.
-                </p>
+                <div class="chip-profile small">
+                  <p class="muted">
+                    Connected to {profile?.description ?? chipName}
+                    {nativeUsb && " over its native USB port"}.
+                  </p>
+                  <dl>
+                    <div>
+                      <dt>Flash</dt>
+                      <dd>
+                        {profile?.flashBytes === undefined
+                          ? "could not be read"
+                          : profile.flashSizeDetected
+                            ? mb(profile.flashBytes)
+                            : `${mb(profile.flashBytes)} assumed — the flash chip did not identify itself`}
+                      </dd>
+                    </div>
+                    {profile?.features !== undefined &&
+                      profile.features.length > 0 && (
+                        <div>
+                          <dt>Radios</dt>
+                          <dd>{profile.features.join(" · ")}</dd>
+                        </div>
+                      )}
+                    {profile?.mac !== undefined && (
+                      <div>
+                        <dt>MAC</dt>
+                        <dd>{profile.mac}</dd>
+                      </div>
+                    )}
+                  </dl>
+                </div>
               )}
               {busy && progress === undefined && <p class="muted">Checking…</p>}
 
@@ -581,11 +698,49 @@ function App() {
                 </div>
               )}
 
-              {report?.canWrite === true && progress === undefined && (
-                <button disabled={busy} onClick={() => void onWrite()}>
-                  Write firmware to this board
-                </button>
+              {downloadError !== undefined && (
+                <div class="card warn">
+                  <p>
+                    <strong>The firmware could not be downloaded.</strong>{" "}
+                    Everything above was checked against the board itself and
+                    still holds — this is about reaching the file, not about
+                    your hardware.
+                  </p>
+                  <p class="muted small">
+                    {downloadError.noMirror
+                      ? `${build.projectName} does not publish a copy of its ` +
+                        "firmware that a web page is allowed to download. " +
+                        "GitHub serves release files without the header a " +
+                        "browser needs, so this page cannot fetch them; the " +
+                        "Signal K plugin can, because it downloads on the " +
+                        "server."
+                      : downloadError.blocked
+                        ? "The browser would not complete the request. GitHub " +
+                          "serves release downloads without the header a page " +
+                          "needs to read them from another site, which is the " +
+                          "usual cause; a dropped connection looks the same " +
+                          "from here."
+                        : `The server answered ${downloadError.message}.`}{" "}
+                    Either way you can download{" "}
+                    <a href={build.mergedUrl} target="_blank" rel="noreferrer">
+                      {build.mergedUrl.split("/").pop()}
+                    </a>{" "}
+                    yourself and write it with <code>esptool</code>:
+                  </p>
+                  <pre class="small">
+                    esptool --chip {build.target} write-flash 0x0{" "}
+                    {build.mergedUrl.split("/").pop()}
+                  </pre>
+                </div>
               )}
+
+              {report?.canWrite === true &&
+                downloadError === undefined &&
+                progress === undefined && (
+                  <button disabled={busy} onClick={() => void onWrite()}>
+                    Write firmware to this board
+                  </button>
+                )}
 
               {progress === undefined && (
                 <button
