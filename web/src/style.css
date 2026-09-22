@@ -450,3 +450,23 @@ code {
   border-radius: 6px;
   background: rgba(255, 255, 255, 0.03);
 }
+
+/* What the connected chip says about itself. Shown because someone flashing a
+   board wants to confirm the page is talking to the one on their desk, and
+   because an assumed flash size must be visibly different from a read one. */
+.chip-profile dl {
+  margin: 6px 0 0;
+  display: grid;
+  gap: 2px;
+}
+.chip-profile dl > div {
+  display: flex;
+  gap: 8px;
+}
+.chip-profile dt {
+  min-width: 4.5rem;
+  color: var(--muted, #8a94a6);
+}
+.chip-profile dd {
+  margin: 0;
+}

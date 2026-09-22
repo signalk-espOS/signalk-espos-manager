@@ -9,7 +9,11 @@
  */
 
 import { SAFE_FLASH_PARAMS } from "./preflight.js";
-import { targetFromChipName, USB_JTAG_SERIAL_PID } from "./chips.js";
+import {
+  FLASH_SIZE_BY_ID,
+  targetFromChipName,
+  USB_JTAG_SERIAL_PID,
+} from "./chips.js";
 import type { Target } from "./types.js";
 
 /** Minimal shapes, so the app does not depend on esptool-js's own types. */
@@ -20,11 +24,19 @@ interface Transport {
 
 interface Loader {
   main(): Promise<string>;
-  chip: { CHIP_NAME: string };
   /** Returns a size string such as "16MB", not a byte count. */
   detectFlashSize(): Promise<string>;
   /** Converts that string to bytes. */
   flashSizeBytes(flashSize: string): number;
+  /** Raw JEDEC id of the flash part: 24 bits, manufacturer in the low byte. */
+  readFlashId(): Promise<number>;
+  /** Radios and cores, e.g. ["Wi-Fi 6 (dual-band)", "BT 5 (LE)"]. */
+  chip: {
+    CHIP_NAME: string;
+    getChipDescription?: (loader: Loader) => Promise<string>;
+    getChipFeatures?: (loader: Loader) => Promise<string[]>;
+    readMac?: (loader: Loader) => Promise<string>;
+  };
   writeFlash(options: {
     fileArray: { data: Uint8Array; address: number }[];
     flashMode: string;
@@ -43,6 +55,23 @@ export interface Connection {
   chipName: string;
   target?: Target;
   flashBytes?: number;
+  /**
+   * False when `flashBytes` is esptool-js's guess rather than a reading.
+   *
+   * `detectFlashSize()` answers "4MB" both when it decoded that from the
+   * chip and when it could not decode anything at all (esploader.js: `if
+   * (!flashSizeStr) { flashSizeStr = "4MB" }`). Those must not look the same:
+   * a guess that is too SMALL makes good firmware look too big for the board.
+   * Seen for real on a Waveshare ESP32-C5 whose flash reports manufacturer
+   * 0x46 — the browser said 4 MB, the chip has 16 MB.
+   */
+  flashSizeDetected: boolean;
+  /** What the chip says it is, e.g. "ESP32-C5 (revision v1.0)". */
+  chipDescription?: string;
+  /** Radios and cores the chip reports. */
+  features?: string[];
+  /** Unique to this unit — not to the board model. */
+  mac?: string;
   /** True when the user picked Espressif's native USB port. */
   nativeUsb: boolean;
 }
@@ -129,16 +158,58 @@ export async function connect(
   const chipName = await loader.main();
 
   let flashBytes: number | undefined;
+  let flashSizeDetected = false;
   try {
-    // detectFlashSize() answers with a string like "16MB"; flashSizeBytes()
-    // turns it into a number. There is no getFlashSize() — calling one would
-    // throw into the catch below and silently disable the fit check, which is
-    // the very thing that stops a 16 MB image reaching a 4 MB board.
-    const detected = await loader.detectFlashSize();
-    const bytes = loader.flashSizeBytes(detected);
-    if (Number.isFinite(bytes) && bytes > 0) flashBytes = bytes;
+    // Read the JEDEC id ourselves and decode the size byte, rather than
+    // trusting detectFlashSize() alone. That call answers "4MB" both when it
+    // read 4 MB off the chip and when it recognised nothing, and the two must
+    // be distinguishable — see Connection.flashSizeDetected.
+    const jedec = await loader.readFlashId();
+    const sizeId = (jedec >> 16) & 0xff;
+    const known = FLASH_SIZE_BY_ID[sizeId];
+    if (known !== undefined) {
+      flashBytes = known;
+      flashSizeDetected = true;
+    }
   } catch {
-    // Not fatal: the fit check reports "unknown" and lets the write proceed.
+    // Fall through to the library's answer below.
+  }
+
+  if (flashBytes === undefined) {
+    try {
+      // detectFlashSize() answers with a string like "16MB"; flashSizeBytes()
+      // turns it into a number. There is no getFlashSize() — calling one would
+      // throw into the catch below and silently disable the fit check, which is
+      // the very thing that stops a 16 MB image reaching a 4 MB board.
+      const detected = await loader.detectFlashSize();
+      const bytes = loader.flashSizeBytes(detected);
+      // Whatever this is, it is not a reading we could confirm, so it stays
+      // flagged as undetected and never blocks a write on its own.
+      if (Number.isFinite(bytes) && bytes > 0) flashBytes = bytes;
+    } catch {
+      // Not fatal: the fit check reports "unknown" and lets the write proceed.
+    }
+  }
+
+  // Describe the hardware while we have it connected. Each is optional in
+  // esptool-js's chip classes, and none of it is worth failing a flash over.
+  let chipDescription: string | undefined;
+  let features: string[] | undefined;
+  let mac: string | undefined;
+  try {
+    chipDescription = await loader.chip.getChipDescription?.(loader);
+  } catch {
+    /* optional */
+  }
+  try {
+    features = await loader.chip.getChipFeatures?.(loader);
+  } catch {
+    /* optional */
+  }
+  try {
+    mac = await loader.chip.readMac?.(loader);
+  } catch {
+    /* optional */
   }
 
   current = {
@@ -147,6 +218,10 @@ export async function connect(
     chipName,
     target: targetFromChipName(chipName),
     flashBytes,
+    flashSizeDetected,
+    chipDescription,
+    features,
+    mac,
     nativeUsb: transport.getPid() === USB_JTAG_SERIAL_PID,
   };
   return current;

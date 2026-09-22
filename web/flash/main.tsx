@@ -127,6 +127,18 @@ function App() {
   const [head, setHead] = useState<Uint8Array | undefined>(undefined);
   const [chipName, setChipName] = useState<string | undefined>(undefined);
   const [nativeUsb, setNativeUsb] = useState(false);
+  // What the chip says about itself, shown so someone can confirm the page is
+  // talking to the board they think it is.
+  const [profile, setProfile] = useState<
+    | {
+        description?: string;
+        features?: string[];
+        flashBytes?: number;
+        flashSizeDetected: boolean;
+        mac?: string;
+      }
+    | undefined
+  >(undefined);
   const [progress, setProgress] = useState<
     { written: number; total: number; startedAt: number } | undefined
   >(undefined);
@@ -173,6 +185,7 @@ function App() {
         detectedTarget: connection?.target,
         buildTarget: chosen.target,
         detectedFlashBytes: connection?.flashBytes,
+        flashSizeDetected: connection?.flashSizeDetected,
         imageBytes: chosen.mergedBytes ?? 0,
         imageHead,
         writeAddress: 0,
@@ -192,6 +205,13 @@ function App() {
       const connection = await connect(() => {});
       setChipName(connection.chipName);
       setNativeUsb(connection.nativeUsb);
+      setProfile({
+        description: connection.chipDescription,
+        features: connection.features,
+        flashBytes: connection.flashBytes,
+        flashSizeDetected: connection.flashSizeDetected,
+        mac: connection.mac,
+      });
 
       // Check what the chip already told us BEFORE touching the network. The
       // chip and fit checks need no download, and they are the two that catch
@@ -575,10 +595,37 @@ function App() {
                 {build.projectName} {build.version}
               </h3>
               {chipName !== undefined && (
-                <p class="muted small">
-                  Connected to {chipName}
-                  {nativeUsb && " over its native USB port"}.
-                </p>
+                <div class="chip-profile small">
+                  <p class="muted">
+                    Connected to {profile?.description ?? chipName}
+                    {nativeUsb && " over its native USB port"}.
+                  </p>
+                  <dl>
+                    <div>
+                      <dt>Flash</dt>
+                      <dd>
+                        {profile?.flashBytes === undefined
+                          ? "could not be read"
+                          : profile.flashSizeDetected
+                            ? mb(profile.flashBytes)
+                            : `${mb(profile.flashBytes)} assumed — the flash chip did not identify itself`}
+                      </dd>
+                    </div>
+                    {profile?.features !== undefined &&
+                      profile.features.length > 0 && (
+                        <div>
+                          <dt>Radios</dt>
+                          <dd>{profile.features.join(" · ")}</dd>
+                        </div>
+                      )}
+                    {profile?.mac !== undefined && (
+                      <div>
+                        <dt>MAC</dt>
+                        <dd>{profile.mac}</dd>
+                      </div>
+                    )}
+                  </dl>
+                </div>
               )}
               {busy && progress === undefined && <p class="muted">Checking…</p>}
 

@@ -79,3 +79,48 @@ export function chipNameForTarget(target: Target): string {
   }
   return target;
 }
+
+/**
+ * Flash size by the JEDEC id's size byte (bits 16-23 of `readFlashId()`).
+ *
+ * Transcribed from esptool-js 0.6.1's own `DETECTED_FLASH_SIZES`
+ * (lib/esploader.js) so the two cannot disagree about what an id means.
+ *
+ * The reason we decode it ourselves rather than calling `detectFlashSize()`:
+ * that method returns the string "4MB" BOTH when it decoded 4 MB from the chip
+ * and when it recognised nothing at all —
+ *
+ *     let flashSizeStr = this.DETECTED_FLASH_SIZES[sizeId];
+ *     if (!flashSizeStr) { flashSizeStr = "4MB"; }
+ *
+ * — so its answer cannot distinguish a reading from a guess. A guess that is
+ * too small is the dangerous direction: it makes correct firmware look too big
+ * for the board and blocks a flash that would have worked. Confirmed on a
+ * Waveshare ESP32-C5 (flash manufacturer 0x46, device 0x4018 = 16 MB) which
+ * the browser reported as 4 MB while `esptool flash-id` read 16 MB.
+ */
+export const FLASH_SIZE_BY_ID: Readonly<Record<number, number>> = {
+  0x12: 256 * 1024,
+  0x13: 512 * 1024,
+  0x14: 1 * 1024 * 1024,
+  0x15: 2 * 1024 * 1024,
+  0x16: 4 * 1024 * 1024,
+  0x17: 8 * 1024 * 1024,
+  0x18: 16 * 1024 * 1024,
+  0x19: 32 * 1024 * 1024,
+  0x1a: 64 * 1024 * 1024,
+  0x1b: 128 * 1024 * 1024,
+  0x1c: 256 * 1024 * 1024,
+  0x20: 64 * 1024 * 1024,
+  0x21: 128 * 1024 * 1024,
+  0x22: 256 * 1024 * 1024,
+  0x32: 256 * 1024,
+  0x33: 512 * 1024,
+  0x34: 1 * 1024 * 1024,
+  0x35: 2 * 1024 * 1024,
+  0x36: 4 * 1024 * 1024,
+  0x37: 8 * 1024 * 1024,
+  0x38: 16 * 1024 * 1024,
+  0x39: 32 * 1024 * 1024,
+  0x3a: 64 * 1024 * 1024,
+};

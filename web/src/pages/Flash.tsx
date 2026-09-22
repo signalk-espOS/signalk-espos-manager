@@ -125,6 +125,7 @@ export function FlashPage() {
         detectedTarget: connection?.target,
         buildTarget: chosen.target,
         detectedFlashBytes: connection?.flashBytes,
+        flashSizeDetected: connection?.flashSizeDetected,
         imageBytes: chosen.mergedBytes ?? 0,
         imageHead,
         writeAddress: 0,

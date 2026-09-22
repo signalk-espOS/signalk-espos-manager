@@ -14,6 +14,7 @@ import { describe, expect, it } from "vitest";
 import {
   BOOTLOADER_FLASH_OFFSET,
   CHIP_NAME_TO_TARGET,
+  FLASH_SIZE_BY_ID,
 } from "../web/src/flash/chips.js";
 
 const TARGETS = Object.values(CHIP_NAME_TO_TARGET).filter(
@@ -120,5 +121,44 @@ describe("the loader methods we call actually exist", () => {
     // Returning the string straight into a byte comparison would make every
     // fit check nonsense.
     expect(dts).toMatch(/detectFlashSize\(\):\s*Promise<string>/);
+  });
+});
+
+/**
+ * Our JEDEC size table must match esptool-js's own.
+ *
+ * It is a transcription, and a transcription that drifts would mis-size a
+ * board silently. Read from the installed package so an upgrade that changes
+ * the table fails here rather than on someone's desk.
+ */
+describe("FLASH_SIZE_BY_ID vs the installed esptool-js", () => {
+  it("agrees with DETECTED_FLASH_SIZES entry for entry", () => {
+    const source = readFileSync(
+      new URL("../node_modules/esptool-js/lib/esploader.js", import.meta.url),
+      "utf8",
+    );
+    const block = /DETECTED_FLASH_SIZES\s*=\s*\{([\s\S]*?)\}/.exec(source);
+    expect(block, "could not find DETECTED_FLASH_SIZES").not.toBeNull();
+
+    const theirs = new Map<number, number>();
+    for (const match of (block?.[1] ?? "").matchAll(
+      /(0x[0-9a-f]+)\s*:\s*"(\d+)(KB|MB)"/gi,
+    )) {
+      const [, id, size, unit] = match;
+      if (id === undefined || size === undefined || unit === undefined) {
+        continue;
+      }
+      theirs.set(
+        Number(id),
+        Number(size) * (unit.toUpperCase() === "MB" ? 1024 * 1024 : 1024),
+      );
+    }
+    expect(theirs.size).toBeGreaterThan(10);
+
+    for (const [id, bytes] of theirs) {
+      expect(FLASH_SIZE_BY_ID[id], `id 0x${id.toString(16)} disagrees`).toBe(
+        bytes,
+      );
+    }
   });
 });
