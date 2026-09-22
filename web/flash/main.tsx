@@ -75,6 +75,14 @@ interface RegistryProject {
  */
 type Browse = "board" | "build";
 
+/** A response that arrived and said no, as opposed to one that never came. */
+class HttpStatusError extends Error {
+  constructor(readonly status: number) {
+    super(`HTTP ${status}`);
+    this.name = "HttpStatusError";
+  }
+}
+
 function mb(bytes: number | undefined): string {
   if (bytes === undefined) return "";
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
@@ -128,9 +136,9 @@ function App() {
   // Separate from `error`: a download that fails is not the same as the page
   // breaking, and it needs its own explanation because the cause is almost
   // always the same one and is not the user's fault.
-  const [downloadError, setDownloadError] = useState<string | undefined>(
-    undefined,
-  );
+  const [downloadError, setDownloadError] = useState<
+    { message: string; blocked: boolean } | undefined
+  >(undefined);
   const [browse, setBrowse] = useState<Browse>("board");
   const [chipFilter, setChipFilter] = useState<Target | "all">("all");
 
@@ -201,14 +209,22 @@ function App() {
           headers: { Range: "bytes=0-65535" },
         });
         if (!response.ok) {
-          throw new Error(`HTTP ${response.status}`);
+          throw new HttpStatusError(response.status);
         }
         const imageHead = new Uint8Array(await response.arrayBuffer());
         setHead(imageHead);
         runChecks(chosen, imageHead, undefined);
       } catch (e) {
         setHead(undefined);
-        setDownloadError(e instanceof Error ? e.message : String(e));
+        // A server that answered tells us something specific; a request the
+        // browser refused to make, or that never arrived, rejects with a
+        // TypeError carrying no response at all. Only the second case is the
+        // one the CORS explanation fits, and guessing wrong sends someone
+        // looking in the wrong place.
+        setDownloadError({
+          message: e instanceof Error ? e.message : String(e),
+          blocked: !(e instanceof HttpStatusError),
+        });
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -612,10 +628,14 @@ function App() {
                     your hardware.
                   </p>
                   <p class="muted small">
-                    GitHub serves release downloads without the header a browser
-                    needs to read them from another site, so this page cannot
-                    fetch them directly ({downloadError}). Until the firmware is
-                    published somewhere a browser may read, download{" "}
+                    {downloadError.blocked
+                      ? "The browser would not complete the request. GitHub " +
+                        "serves release downloads without the header a page " +
+                        "needs to read them from another site, which is the " +
+                        "usual cause; a dropped connection looks the same " +
+                        "from here."
+                      : `The server answered ${downloadError.message}.`}{" "}
+                    Either way you can download{" "}
                     <a href={build.mergedUrl} target="_blank" rel="noreferrer">
                       {build.mergedUrl.split("/").pop()}
                     </a>{" "}
