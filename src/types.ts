@@ -176,6 +176,16 @@ export interface DeviceSnapshot {
   authRequired: boolean;
   /** Only when we are authorized. */
   info?: SystemInfo;
+  /**
+   * The device's own `ota` config. Read because `/ota/status` cannot answer
+   * whether a device is set up to find updates: in `signalk` mode the URL is
+   * derived at check time and reported empty until then.
+   */
+  otaConfig?: {
+    manifestSrc?: string;
+    manifestPath?: string;
+    manifestUrl?: string;
+  };
   ota?: OtaStatus;
 }
 

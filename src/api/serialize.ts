@@ -112,6 +112,28 @@ function otaRepair(record: DeviceRecord): {
   const manifest = record.snapshot?.ota?.manifest;
   if (app === undefined || manifest === undefined) return {};
   const expected = manifestPathFor(app, PUBLIC_FW_BASE);
+  // Judge from the device's own `ota` config when we could read it, never from
+  // the status URL alone. In `signalk` mode espOS derives the URL from the
+  // server it picked and `/ota/status` reports it only after a check has run
+  // (espos_ota.c: `s.manifest_eff[0] ? s.manifest_eff : s.manifest_url`), so an
+  // empty URL means "configured but not checked yet" just as often as
+  // "pointed nowhere". Inferring from it reported "not looking for updates
+  // anywhere" about a device configured seconds earlier.
+  const cfg = record.snapshot?.otaConfig;
+  if (cfg !== undefined) {
+    const result = needsOtaRepair(
+      cfg.manifestSrc,
+      cfg.manifestPath,
+      cfg.manifestUrl,
+      expected,
+    );
+    return result.needed
+      ? { otaNeedsRepair: true, otaRepairReason: result.reason }
+      : { otaNeedsRepair: false };
+  }
+  // No config (unauthorized, or firmware without the endpoint). An empty URL
+  // is then genuinely unknown, so say nothing rather than guess either way.
+  if ((manifest.url ?? "") === "") return {};
   // The device reports the ASSEMBLED url, so compare on the path portion.
   const reportedPath = pathOf(manifest.url);
   const result = needsOtaRepair(

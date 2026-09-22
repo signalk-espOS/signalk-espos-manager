@@ -324,7 +324,18 @@ export function registerRoutes(
           });
           res.json({ ok: true, ...result });
         } catch (error) {
-          res.status(502).json({ error: errorMessage(error) });
+          // A firmware without the setting rejects the write as an unknown key.
+          // Naming that is the difference between a dead end and an explanation:
+          // the device cannot be pointed at a manifest until it is updated, and
+          // the update must go over USB because it cannot fetch one. Seen on an
+          // espOS 0.7.0 gateway.
+          const message = errorMessage(error);
+          res.status(502).json({
+            error: /unknown key/i.test(message)
+              ? `${message} — this firmware is too old to be pointed at an ` +
+                `update manifest, so it has to be updated over USB first`
+              : message,
+          });
         }
       })();
     }),

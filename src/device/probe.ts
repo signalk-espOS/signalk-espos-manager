@@ -130,8 +130,15 @@ export async function probeDevice(options: ProbeOptions): Promise<ProbeResult> {
       fetchImpl: options.fetchImpl,
     });
     try {
+      // Deliberately NOT inside enrich(): enrich swallows every error, and
+      // this call is the authorization probe -- a 401 or 429 has to reach the
+      // catch below so the key store can record a refusal or a lockout.
       snapshot.info = await authed.systemInfo();
-      snapshot.ota = await authed.otaStatus();
+      // enrich(), not a second copy of the same fetches: it also promotes
+      // hardware.board onto the snapshot and reads the ota config, and a
+      // key-protected device silently missing both is exactly the divergence
+      // that duplicating this caused once already.
+      await enrich(snapshot, authed);
       keys.noteSuccess(identity.id);
       return { ok: true, address, snapshot, auth: "authorized" };
     } catch (error) {
@@ -201,5 +208,31 @@ async function enrich(
     snapshot.ota = await client.otaStatus();
   } catch {
     // Same.
+  }
+  try {
+    // The OTA config, because the status cannot answer "is this device set up
+    // to find updates". With `manifest_src = "signalk"` espOS derives the URL
+    // from the server it picked and `/ota/status` reports it only after a check
+    // has run, so a correctly configured device that has not checked yet is
+    // indistinguishable from one pointed nowhere -- unless we read the config
+    // that actually holds the answer.
+    const config = await client.getConfig();
+    const ota = config["ota"];
+    if (typeof ota === "object" && ota !== null) {
+      const o = ota as Record<string, unknown>;
+      snapshot.otaConfig = {
+        manifestSrc:
+          typeof o["manifest_src"] === "string" ? o["manifest_src"] : undefined,
+        manifestPath:
+          typeof o["manifest_path"] === "string"
+            ? o["manifest_path"]
+            : undefined,
+        manifestUrl:
+          typeof o["manifest_url"] === "string" ? o["manifest_url"] : undefined,
+      };
+    }
+  } catch {
+    // A key-protected device we are not authorized for, or firmware without
+    // the endpoint. The repair check stays quiet rather than guessing.
   }
 }
