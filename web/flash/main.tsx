@@ -38,6 +38,7 @@ interface RegistryBuild {
   target: string;
   mergedUrl?: string;
   mergedBytes?: number;
+  mergedWebUrl?: string;
   otaUrl?: string;
   boardId?: string;
   unsigned?: boolean;
@@ -75,12 +76,36 @@ interface RegistryProject {
  */
 type Browse = "board" | "build";
 
+/** The project publishes no URL a browser is allowed to read. */
+class NoWebUrlError extends Error {
+  constructor() {
+    super("no browser-readable copy of this firmware is published");
+    this.name = "NoWebUrlError";
+  }
+}
+
 /** A response that arrived and said no, as opposed to one that never came. */
 class HttpStatusError extends Error {
   constructor(readonly status: number) {
     super(`HTTP ${status}`);
     this.name = "HttpStatusError";
   }
+}
+
+/**
+ * The URL this page may actually fetch, or undefined.
+ *
+ * GitHub release downloads carry no Access-Control-Allow-Origin, so
+ * `mergedUrl` is unusable from a browser however valid it looks. Only a
+ * project that mirrors its images to a branch has a URL a page can read.
+ * Returning undefined rather than falling back keeps the failure honest: the
+ * fallback would always fail, and it would look like a network fault.
+ */
+function fetchableUrl(build: {
+  mergedUrl: string;
+  mergedWebUrl?: string;
+}): string | undefined {
+  return build.mergedWebUrl;
 }
 
 function mb(bytes: number | undefined): string {
@@ -149,7 +174,7 @@ function App() {
   // breaking, and it needs its own explanation because the cause is almost
   // always the same one and is not the user's fault.
   const [downloadError, setDownloadError] = useState<
-    { message: string; blocked: boolean } | undefined
+    { message: string; blocked: boolean; noMirror: boolean } | undefined
   >(undefined);
   const [browse, setBrowse] = useState<Browse>("board");
   const [chipFilter, setChipFilter] = useState<Target | "all">("all");
@@ -225,7 +250,11 @@ function App() {
       // Only now read the image header, and treat failure as one more failed
       // check rather than an exception that discards the checks above.
       try {
-        const response = await fetch(chosen.mergedUrl, {
+        const url = fetchableUrl(chosen);
+        if (url === undefined) {
+          throw new NoWebUrlError();
+        }
+        const response = await fetch(url, {
           headers: { Range: "bytes=0-65535" },
         });
         if (!response.ok) {
@@ -244,6 +273,7 @@ function App() {
         setDownloadError({
           message: e instanceof Error ? e.message : String(e),
           blocked: !(e instanceof HttpStatusError),
+          noMirror: e instanceof NoWebUrlError,
         });
       }
     } catch (e) {
@@ -258,7 +288,9 @@ function App() {
     setBusy(true);
     setError(undefined);
     try {
-      const response = await fetch(build.mergedUrl);
+      const url = fetchableUrl(build);
+      if (url === undefined) throw new NoWebUrlError();
+      const response = await fetch(url);
       if (!response.ok)
         throw new Error(`Download failed: HTTP ${response.status}`);
       const image = await response.arrayBuffer();
@@ -675,13 +707,20 @@ function App() {
                     your hardware.
                   </p>
                   <p class="muted small">
-                    {downloadError.blocked
-                      ? "The browser would not complete the request. GitHub " +
-                        "serves release downloads without the header a page " +
-                        "needs to read them from another site, which is the " +
-                        "usual cause; a dropped connection looks the same " +
-                        "from here."
-                      : `The server answered ${downloadError.message}.`}{" "}
+                    {downloadError.noMirror
+                      ? `${build.projectName} does not publish a copy of its ` +
+                        "firmware that a web page is allowed to download. " +
+                        "GitHub serves release files without the header a " +
+                        "browser needs, so this page cannot fetch them; the " +
+                        "Signal K plugin can, because it downloads on the " +
+                        "server."
+                      : downloadError.blocked
+                        ? "The browser would not complete the request. GitHub " +
+                          "serves release downloads without the header a page " +
+                          "needs to read them from another site, which is the " +
+                          "usual cause; a dropped connection looks the same " +
+                          "from here."
+                        : `The server answered ${downloadError.message}.`}{" "}
                     Either way you can download{" "}
                     <a href={build.mergedUrl} target="_blank" rel="noreferrer">
                       {build.mergedUrl.split("/").pop()}

@@ -23,6 +23,15 @@ export interface FlashBuild {
   target: Target;
   /** Full-flash image: the only kind that can be written to a blank board. */
   mergedUrl: string;
+  /**
+   * The same image somewhere a browser may read it.
+   *
+   * Absent for a project that has not mirrored its release images. GitHub
+   * serves release downloads without CORS headers, so with only `mergedUrl`
+   * a web page cannot download the firmware at all -- the plugin can, because
+   * it fetches server-side.
+   */
+  mergedWebUrl?: string;
   mergedBytes?: number;
   mergedSha256?: string;
   boardId?: string;
