@@ -130,8 +130,15 @@ export async function probeDevice(options: ProbeOptions): Promise<ProbeResult> {
       fetchImpl: options.fetchImpl,
     });
     try {
+      // Deliberately NOT inside enrich(): enrich swallows every error, and
+      // this call is the authorization probe -- a 401 or 429 has to reach the
+      // catch below so the key store can record a refusal or a lockout.
       snapshot.info = await authed.systemInfo();
-      snapshot.ota = await authed.otaStatus();
+      // enrich(), not a second copy of the same fetches: it also promotes
+      // hardware.board onto the snapshot and reads the ota config, and a
+      // key-protected device silently missing both is exactly the divergence
+      // that duplicating this caused once already.
+      await enrich(snapshot, authed);
       keys.noteSuccess(identity.id);
       return { ok: true, address, snapshot, auth: "authorized" };
     } catch (error) {
