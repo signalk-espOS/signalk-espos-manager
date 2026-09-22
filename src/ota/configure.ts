@@ -150,6 +150,12 @@ export function needsOtaRepair(
       reason: `this device looks for updates at ${String(manifestUrl)}`,
     };
   }
+  if ((manifestPath ?? "") === "") {
+    return {
+      needed: true,
+      reason: "this device has no update source configured",
+    };
+  }
   return {
     needed: true,
     reason: `this device looks for updates at ${String(manifestPath)}`,

@@ -202,4 +202,30 @@ async function enrich(
   } catch {
     // Same.
   }
+  try {
+    // The OTA config, because the status cannot answer "is this device set up
+    // to find updates". With `manifest_src = "signalk"` espOS derives the URL
+    // from the server it picked and `/ota/status` reports it only after a check
+    // has run, so a correctly configured device that has not checked yet is
+    // indistinguishable from one pointed nowhere -- unless we read the config
+    // that actually holds the answer.
+    const config = await client.getConfig();
+    const ota = config["ota"];
+    if (typeof ota === "object" && ota !== null) {
+      const o = ota as Record<string, unknown>;
+      snapshot.otaConfig = {
+        manifestSrc:
+          typeof o["manifest_src"] === "string" ? o["manifest_src"] : undefined,
+        manifestPath:
+          typeof o["manifest_path"] === "string"
+            ? o["manifest_path"]
+            : undefined,
+        manifestUrl:
+          typeof o["manifest_url"] === "string" ? o["manifest_url"] : undefined,
+      };
+    }
+  } catch {
+    // A key-protected device we are not authorized for, or firmware without
+    // the endpoint. The repair check stays quiet rather than guessing.
+  }
 }
