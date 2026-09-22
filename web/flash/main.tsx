@@ -125,6 +125,12 @@ function App() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | undefined>(undefined);
   const [finished, setFinished] = useState(false);
+  // Separate from `error`: a download that fails is not the same as the page
+  // breaking, and it needs its own explanation because the cause is almost
+  // always the same one and is not the user's fault.
+  const [downloadError, setDownloadError] = useState<string | undefined>(
+    undefined,
+  );
   const [browse, setBrowse] = useState<Browse>("board");
   const [chipFilter, setChipFilter] = useState<Target | "all">("all");
 
@@ -150,7 +156,7 @@ function App() {
 
   const runChecks = (
     chosen: FlashBuild,
-    imageHead: Uint8Array,
+    imageHead: Uint8Array | undefined,
     board: string | undefined,
   ): void => {
     const connection = activeConnection();
@@ -172,22 +178,38 @@ function App() {
   const onPick = async (chosen: FlashBuild): Promise<void> => {
     setBuild(chosen);
     setError(undefined);
+    setDownloadError(undefined);
     setBusy(true);
     try {
       const connection = await connect(() => {});
       setChipName(connection.chipName);
       setNativeUsb(connection.nativeUsb);
-      const response = await fetch(chosen.mergedUrl, {
-        headers: { Range: "bytes=0-65535" },
-      });
-      if (!response.ok) {
-        throw new Error(
-          `Could not read the firmware header: HTTP ${response.status}`,
-        );
+
+      // Check what the chip already told us BEFORE touching the network. The
+      // chip and fit checks need no download, and they are the two that catch
+      // the mistakes worth catching -- wrong board picked from the list, image
+      // too big for this module. Fetching first meant a network failure threw
+      // before any of them ran, so someone who clicked the wrong row was told
+      // "failed to fetch" rather than "this is an ESP32-C5, that firmware is
+      // for an ESP32".
+      runChecks(chosen, undefined, undefined);
+
+      // Only now read the image header, and treat failure as one more failed
+      // check rather than an exception that discards the checks above.
+      try {
+        const response = await fetch(chosen.mergedUrl, {
+          headers: { Range: "bytes=0-65535" },
+        });
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+        const imageHead = new Uint8Array(await response.arrayBuffer());
+        setHead(imageHead);
+        runChecks(chosen, imageHead, undefined);
+      } catch (e) {
+        setHead(undefined);
+        setDownloadError(e instanceof Error ? e.message : String(e));
       }
-      const imageHead = new Uint8Array(await response.arrayBuffer());
-      setHead(imageHead);
-      runChecks(chosen, imageHead, undefined);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -581,11 +603,38 @@ function App() {
                 </div>
               )}
 
-              {report?.canWrite === true && progress === undefined && (
-                <button disabled={busy} onClick={() => void onWrite()}>
-                  Write firmware to this board
-                </button>
+              {downloadError !== undefined && (
+                <div class="card warn">
+                  <p>
+                    <strong>The firmware could not be downloaded.</strong>{" "}
+                    Everything above was checked against the board itself and
+                    still holds — this is about reaching the file, not about
+                    your hardware.
+                  </p>
+                  <p class="muted small">
+                    GitHub serves release downloads without the header a browser
+                    needs to read them from another site, so this page cannot
+                    fetch them directly ({downloadError}). Until the firmware is
+                    published somewhere a browser may read, download{" "}
+                    <a href={build.mergedUrl} target="_blank" rel="noreferrer">
+                      {build.mergedUrl.split("/").pop()}
+                    </a>{" "}
+                    yourself and write it with <code>esptool</code>:
+                  </p>
+                  <pre class="small">
+                    esptool --chip {build.target} write-flash 0x0{" "}
+                    {build.mergedUrl.split("/").pop()}
+                  </pre>
+                </div>
               )}
+
+              {report?.canWrite === true &&
+                downloadError === undefined &&
+                progress === undefined && (
+                  <button disabled={busy} onClick={() => void onWrite()}>
+                    Write firmware to this board
+                  </button>
+                )}
 
               {progress === undefined && (
                 <button

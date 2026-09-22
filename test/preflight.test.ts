@@ -259,3 +259,54 @@ describe("where the flasher can run", () => {
     expect(insecureContexts).not.toContain("localhost");
   });
 });
+
+/**
+ * The checks that need no download must still report without one.
+ *
+ * Live failure, 2026-09-22: a C5 devkit was connected, the wrong row was
+ * clicked, and the page said only "failed to fetch". The chip and fit checks
+ * would both have caught it, but the flasher downloaded the image header
+ * BEFORE running any check, so a network failure threw first and the useful
+ * diagnosis never ran. GitHub serves release assets without CORS headers, so
+ * that fetch fails for every project — which made the ordering not an edge
+ * case but the normal path.
+ */
+describe("checks that do not need the image", () => {
+  it("still catches the wrong chip when the image could not be read", () => {
+    const report = preflight(
+      input({
+        detectedTarget: "esp32c5",
+        buildTarget: "esp32",
+        imageHead: undefined,
+      }),
+    );
+    const chip = report.checks.find((c) => c.id === "chip");
+    expect(chip?.ok).toBe(false);
+    expect(chip?.message).toContain("ESP32-C5");
+    expect(report.canWrite).toBe(false);
+  });
+
+  it("still catches an image too big for the module without the image", () => {
+    const report = preflight(
+      input({
+        detectedTarget: "esp32c5",
+        buildTarget: "esp32c5",
+        detectedFlashBytes: 4 * 1024 * 1024,
+        imageBytes: 6_225_920,
+        imageHead: undefined,
+      }),
+    );
+    const fit = report.checks.find((c) => c.id === "fit");
+    expect(fit?.ok).toBe(false);
+    expect(report.canWrite).toBe(false);
+  });
+
+  it("does not claim the image is wrong merely because it is absent", () => {
+    // Absent is not invalid: saying "bad image" for a failed download would
+    // send someone hunting a firmware problem that does not exist.
+    const report = preflight(input({ imageHead: undefined }));
+    const image = report.checks.find((c) => c.id === "image");
+    expect(image?.ok).toBe(true);
+    expect(image?.message).toMatch(/not inspected/i);
+  });
+});
