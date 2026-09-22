@@ -66,6 +66,8 @@ export interface Connection {
    * 0x46 — the browser said 4 MB, the chip has 16 MB.
    */
   flashSizeDetected: boolean;
+  /** The raw JEDEC id, when one was read, for diagnosing an unknown chip. */
+  jedecId?: number;
   /** What the chip says it is, e.g. "ESP32-C5 (revision v1.0)". */
   chipDescription?: string;
   /** Radios and cores the chip reports. */
@@ -155,16 +157,29 @@ export async function connect(
   // main() detects the chip, uploads the stub, raises the baud rate and
   // verifies the flash responds. Using it rather than hand-rolling those
   // steps keeps us on the library's tested path.
-  const chipName = await loader.main();
+  // main() returns getChipDescription(), e.g. "ESP32-C5 (revision v1.0)" --
+  // NOT the bare chip name. Deriving the target from it silently failed for
+  // every chip whose description carries a revision, which is all of the
+  // modern ones: the page said "could not work out which chip this is" while
+  // displaying the chip two lines above, and the wrong-chip gate never fired.
+  // chip.CHIP_NAME is the exact key our table uses.
+  const description = await loader.main();
+  const chipName = loader.chip.CHIP_NAME ?? description;
 
   let flashBytes: number | undefined;
   let flashSizeDetected = false;
+  // Kept so an unrecognised id can be reported rather than silently becoming
+  // "could not be read" -- the raw value is what makes a bug report useful.
+  let jedecId: number | undefined;
   try {
     // Read the JEDEC id ourselves and decode the size byte, rather than
     // trusting detectFlashSize() alone. That call answers "4MB" both when it
     // read 4 MB off the chip and when it recognised nothing, and the two must
     // be distinguishable — see Connection.flashSizeDetected.
+    // Same extraction esptool-js uses: manufacturer in the low byte, size in
+    // bits 16-23 (esploader.js flashId()/detectFlashSize()).
     const jedec = await loader.readFlashId();
+    jedecId = jedec;
     const sizeId = (jedec >> 16) & 0xff;
     const known = FLASH_SIZE_BY_ID[sizeId];
     if (known !== undefined) {
@@ -193,14 +208,9 @@ export async function connect(
 
   // Describe the hardware while we have it connected. Each is optional in
   // esptool-js's chip classes, and none of it is worth failing a flash over.
-  let chipDescription: string | undefined;
+  const chipDescription: string | undefined = description;
   let features: string[] | undefined;
   let mac: string | undefined;
-  try {
-    chipDescription = await loader.chip.getChipDescription?.(loader);
-  } catch {
-    /* optional */
-  }
   try {
     features = await loader.chip.getChipFeatures?.(loader);
   } catch {
@@ -219,6 +229,7 @@ export async function connect(
     target: targetFromChipName(chipName),
     flashBytes,
     flashSizeDetected,
+    jedecId,
     chipDescription,
     features,
     mac,

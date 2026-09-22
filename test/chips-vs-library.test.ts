@@ -9,12 +9,13 @@
  * (Vite rewrites them when bundling, so the app itself is unaffected).
  */
 
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   BOOTLOADER_FLASH_OFFSET,
   CHIP_NAME_TO_TARGET,
   FLASH_SIZE_BY_ID,
+  targetFromChipName,
 } from "../web/src/flash/chips.js";
 
 const TARGETS = Object.values(CHIP_NAME_TO_TARGET).filter(
@@ -159,6 +160,46 @@ describe("FLASH_SIZE_BY_ID vs the installed esptool-js", () => {
       expect(FLASH_SIZE_BY_ID[id], `id 0x${id.toString(16)} disagrees`).toBe(
         bytes,
       );
+    }
+  });
+});
+
+/**
+ * The chip name we look up must be the one the library actually gives us.
+ *
+ * Live failure on Windows, 2026-09-23: the page showed "Connected to ESP32-C5
+ * (revision v1.0)" and, two lines below, "Could not work out which chip this
+ * is". `loader.main()` returns getChipDescription() — name PLUS revision — not
+ * the bare CHIP_NAME our table keys on, so the lookup missed for every modern
+ * chip and the wrong-chip gate never fired. A board was offered an esp32 image
+ * while an ESP32-C5 was attached.
+ */
+describe("chip identity", () => {
+  it("does not resolve a description carrying a revision", () => {
+    // The shape main() returns. Asserting the bug's mechanism so the fix
+    // cannot quietly regress to reading main()'s value again.
+    expect(targetFromChipName("ESP32-C5 (revision v1.0)")).toBeUndefined();
+  });
+
+  it("resolves every CHIP_NAME the installed library defines", async () => {
+    const dir = new URL(
+      "../node_modules/esptool-js/lib/targets/",
+      import.meta.url,
+    );
+    const names: string[] = [];
+    for (const file of readdirSync(dir)) {
+      if (!file.startsWith("esp32") || !file.endsWith(".js")) continue;
+      const source = readFileSync(new URL(file, dir), "utf8");
+      const m = /CHIP_NAME = "([^"]+)"/.exec(source);
+      if (m?.[1] !== undefined) names.push(m[1]);
+    }
+    expect(names.length).toBeGreaterThan(8);
+
+    for (const name of names) {
+      expect(
+        targetFromChipName(name),
+        `${name} is not in CHIP_NAME_TO_TARGET`,
+      ).toBeDefined();
     }
   });
 });

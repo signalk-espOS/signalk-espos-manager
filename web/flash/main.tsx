@@ -160,6 +160,7 @@ function App() {
         features?: string[];
         flashBytes?: number;
         flashSizeDetected: boolean;
+        jedecId?: number;
         mac?: string;
       }
     | undefined
@@ -235,6 +236,7 @@ function App() {
         features: connection.features,
         flashBytes: connection.flashBytes,
         flashSizeDetected: connection.flashSizeDetected,
+        jedecId: connection.jedecId,
         mac: connection.mac,
       });
 
@@ -640,7 +642,10 @@ function App() {
                           ? "could not be read"
                           : profile.flashSizeDetected
                             ? mb(profile.flashBytes)
-                            : `${mb(profile.flashBytes)} assumed — the flash chip did not identify itself`}
+                            : `${mb(profile.flashBytes)} assumed — this flash chip is not one we recognise` +
+                              (profile.jedecId === undefined
+                                ? " (it did not answer)"
+                                : ` (id 0x${profile.jedecId.toString(16).padStart(6, "0")})`)}
                       </dd>
                     </div>
                     {profile?.features !== undefined &&
