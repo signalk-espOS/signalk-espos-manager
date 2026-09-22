@@ -33,6 +33,9 @@ export interface DeviceDto {
   target?: string;
   board?: string;
   chip?: string;
+  mac?: string;
+  flashBytes?: number;
+  psramBytes?: number;
   uptimeS?: number;
   freeHeap?: number;
   otaState?: string;
@@ -78,6 +81,12 @@ export function serializeDevice(
     target: snapshot?.target ?? snapshot?.ota?.running?.target,
     board: snapshot?.board ?? info?.hardware?.board,
     chip: info?.chip,
+    // Hardware the device measures about itself. Worth surfacing because
+    // "which board is this and what is in it" is the first question when
+    // a panel misbehaves, and the alternative is curl plus a datasheet.
+    mac: info?.hardware?.mac,
+    flashBytes: info?.hardware?.flashBytes,
+    psramBytes: info?.hardware?.ramPsramBytes,
     uptimeS: info?.uptimeS,
     freeHeap: info?.freeHeap,
     otaState: snapshot?.ota?.state,

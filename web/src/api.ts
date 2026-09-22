@@ -77,6 +77,10 @@ export interface DeviceDto {
   target?: string;
   board?: string;
   chip?: string;
+  /** Hardware the device measures about itself (espOS 0.10+). */
+  mac?: string;
+  flashBytes?: number;
+  psramBytes?: number;
   uptimeS?: number;
   freeHeap?: number;
   otaState?: string;
