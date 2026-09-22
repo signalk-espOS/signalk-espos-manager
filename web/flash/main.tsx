@@ -13,7 +13,13 @@
  */
 
 import { render } from "preact";
-import { useEffect, useState } from "preact/hooks";
+import { useEffect, useMemo, useState } from "preact/hooks";
+import {
+  boardCatalogue,
+  targetsInCatalogue,
+  type BoardEntry,
+  type BoardOffer,
+} from "../src/flash/catalogue.js";
 import {
   activeConnection,
   connect,
@@ -32,6 +38,7 @@ interface RegistryBuild {
   target: string;
   mergedUrl?: string;
   mergedBytes?: number;
+  otaUrl?: string;
   boardId?: string;
   unsigned?: boolean;
 }
@@ -42,7 +49,14 @@ interface RegistryProject {
   summary?: string;
   repo: string;
   official?: boolean;
-  boards?: { id: string; name: string; target: string; notes?: string }[];
+  deprecated?: boolean | string;
+  boards?: {
+    id: string;
+    name: string;
+    target: string;
+    notes?: string;
+    buyUrl?: string;
+  }[];
   releases?: {
     version: string;
     channel: string;
@@ -51,9 +65,45 @@ interface RegistryProject {
   }[];
 }
 
+/**
+ * Which question the chooser answers.
+ *
+ * `board` is the default because it is the question someone has when they are
+ * standing at the chart table with a board in hand and this page open. `build`
+ * is the same data project-first, which is the better view once you know what
+ * you want and are after a specific release.
+ */
+type Browse = "board" | "build";
+
 function mb(bytes: number | undefined): string {
   if (bytes === undefined) return "";
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+/**
+ * Where to read more about a project.
+ *
+ * Shown for a board that cannot be flashed as well as one that can: a project
+ * with nothing published for your board is exactly the case where you want its
+ * repository, to see whether that is about to change.
+ */
+function OfferLinks({ offer }: { offer: BoardOffer }) {
+  return (
+    <span class="flash-links">
+      <a
+        href={`https://github.com/${offer.repo}`}
+        target="_blank"
+        rel="noreferrer"
+      >
+        Project
+      </a>
+      {offer.build?.notesUrl !== undefined && (
+        <a href={offer.build.notesUrl} target="_blank" rel="noreferrer">
+          Release notes
+        </a>
+      )}
+    </span>
+  );
 }
 
 function App() {
@@ -75,6 +125,8 @@ function App() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | undefined>(undefined);
   const [finished, setFinished] = useState(false);
+  const [browse, setBrowse] = useState<Browse>("board");
+  const [chipFilter, setChipFilter] = useState<Target | "all">("all");
 
   useEffect(() => {
     void (async () => {
@@ -173,6 +225,16 @@ function App() {
     }
   };
 
+  const catalogue: BoardEntry[] = useMemo(
+    () => boardCatalogue(projects ?? []),
+    [projects],
+  );
+  const chips = useMemo(() => targetsInCatalogue(catalogue), [catalogue]);
+  const shown =
+    chipFilter === "all"
+      ? catalogue
+      : catalogue.filter((entry) => entry.target === chipFilter);
+
   const flashable: FlashBuild[] = (projects ?? []).flatMap((project) =>
     (project.releases ?? []).slice(0, 1).flatMap((release) =>
       release.builds
@@ -260,13 +322,142 @@ function App() {
 
           {build === undefined ? (
             <div class="card">
-              <h3>Choose firmware</h3>
+              <div class="browse-head">
+                <h3>
+                  {browse === "board"
+                    ? "Which board do you have?"
+                    : "Choose firmware"}
+                </h3>
+                <button
+                  class="linkish"
+                  onClick={() => {
+                    setBrowse(browse === "board" ? "build" : "board");
+                  }}
+                >
+                  {browse === "board"
+                    ? "Browse by firmware instead"
+                    : "Browse by board instead"}
+                </button>
+              </div>
+
               {registryError !== undefined ? (
                 <p class="muted">
                   Could not load the firmware list ({registryError}).
                 </p>
               ) : projects === undefined ? (
                 <p class="muted">Loading…</p>
+              ) : browse === "board" ? (
+                catalogue.length === 0 ? (
+                  <p class="muted">
+                    No project in the registry lists the boards it supports yet.
+                  </p>
+                ) : (
+                  <>
+                    {chips.length > 1 && (
+                      <p class="chip-filter small">
+                        <button
+                          class={chipFilter === "all" ? "pill ok" : "pill"}
+                          onClick={() => setChipFilter("all")}
+                        >
+                          all chips
+                        </button>
+                        {chips.map((chip) => (
+                          <button
+                            key={chip}
+                            class={chipFilter === chip ? "pill ok" : "pill"}
+                            onClick={() => setChipFilter(chip)}
+                          >
+                            {chip}
+                          </button>
+                        ))}
+                      </p>
+                    )}
+                    <ul class="projects">
+                      {shown.map((entry) => (
+                        <li class="board-entry" key={entry.id}>
+                          <div class="board-head">
+                            <span class="board-name">{entry.name}</span>
+                            <span class="muted small">{entry.target}</span>
+                            {entry.buyUrl !== undefined && (
+                              <a
+                                class="small"
+                                href={entry.buyUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                              >
+                                where to buy
+                              </a>
+                            )}
+                          </div>
+                          {entry.notes !== undefined && (
+                            <p class="muted small">{entry.notes}</p>
+                          )}
+                          <ul class="offers">
+                            {entry.offers.map((offer) => (
+                              <li key={offer.projectId}>
+                                {offer.state === "flashable" &&
+                                offer.build !== undefined ? (
+                                  <>
+                                    <button
+                                      disabled={busy}
+                                      onClick={() =>
+                                        void onPick(offer.build as FlashBuild)
+                                      }
+                                    >
+                                      <span class="flash-title">
+                                        {offer.projectName}{" "}
+                                        {offer.build.version}
+                                        {offer.official === true && (
+                                          <span class="pill ok">official</span>
+                                        )}
+                                        {offer.build.unsigned === true && (
+                                          <span
+                                            class="pill warn"
+                                            title="Built with a throwaway key: this board will not accept later updates over the air."
+                                          >
+                                            unsigned
+                                          </span>
+                                        )}
+                                      </span>
+                                      {offer.summary !== undefined && (
+                                        <span class="flash-summary">
+                                          {offer.summary}
+                                        </span>
+                                      )}
+                                      <span class="flash-meta">
+                                        {mb(offer.build.mergedBytes)}
+                                      </span>
+                                    </button>
+                                    <OfferLinks offer={offer} />
+                                  </>
+                                ) : (
+                                  <div class="offer-blocked">
+                                    <span class="flash-title">
+                                      {offer.projectName}
+                                      <span class="pill">
+                                        {offer.state === "none"
+                                          ? "no firmware yet"
+                                          : offer.state === "ota-only"
+                                            ? "update only"
+                                            : "build not identified"}
+                                      </span>
+                                    </span>
+                                    {offer.reason !== undefined && (
+                                      <span class="muted small">
+                                        {offer.reason}
+                                      </span>
+                                    )}
+                                    <OfferLinks offer={offer} />
+                                  </div>
+                                )}
+                              </li>
+                            ))}
+                          </ul>
+                        </li>
+                      ))}
+                    </ul>
+                  </>
+                )
               ) : flashable.length === 0 ? (
                 <p class="muted">
                   No project publishes a full-flash image yet. Only those can be
