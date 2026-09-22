@@ -41,6 +41,7 @@ interface RegistryProject {
   name: string;
   summary?: string;
   repo: string;
+  official?: boolean;
   boards?: { id: string; name: string; target: string; notes?: string }[];
   releases?: {
     version: string;
@@ -185,6 +186,15 @@ function App() {
           mergedBytes: b.mergedBytes,
           boardId: b.boardId,
           unsigned: b.unsigned,
+          // The board this image is FOR. Without it two variants of one
+          // release are indistinguishable, which is how this list came to
+          // show "P4 Cockpit 1.3.1 · esp32p4" twice.
+          boardName: (project.boards ?? []).find((x) => x.id === b.boardId)
+            ?.name,
+          summary: project.summary,
+          repo: project.repo,
+          notesUrl: release.notesUrl,
+          official: project.official,
         })),
     ),
   );
@@ -265,16 +275,66 @@ function App() {
               ) : (
                 <ul class="projects">
                   {flashable.map((candidate) => (
-                    <li key={`${candidate.projectId}-${candidate.target}`}>
+                    <li
+                      key={`${candidate.projectId}-${candidate.target}-${
+                        candidate.boardId ?? "any"
+                      }`}
+                      class="flash-choice"
+                    >
                       <button
                         disabled={busy}
                         onClick={() => void onPick(candidate)}
                       >
-                        {candidate.projectName} {candidate.version} ·{" "}
-                        {candidate.target}
-                        {candidate.mergedBytes !== undefined &&
-                          ` · ${mb(candidate.mergedBytes)}`}
+                        <span class="flash-title">
+                          {candidate.projectName} {candidate.version}
+                          {candidate.official === true && (
+                            <span class="pill ok">official</span>
+                          )}
+                          {candidate.unsigned === true && (
+                            <span
+                              class="pill warn"
+                              title="Built with a throwaway key: this board will not accept later updates over the air."
+                            >
+                              unsigned
+                            </span>
+                          )}
+                        </span>
+                        {/* The board is the thing a buyer recognises. */}
+                        <span class="flash-board">
+                          {candidate.boardName ??
+                            (candidate.boardId !== undefined
+                              ? candidate.boardId
+                              : `any ${candidate.target} board`)}
+                        </span>
+                        {candidate.summary !== undefined && (
+                          <span class="flash-summary">{candidate.summary}</span>
+                        )}
+                        <span class="flash-meta">
+                          {candidate.target}
+                          {candidate.mergedBytes !== undefined &&
+                            ` · ${mb(candidate.mergedBytes)}`}
+                        </span>
                       </button>
+                      <span class="flash-links">
+                        {candidate.repo !== undefined && (
+                          <a
+                            href={`https://github.com/${candidate.repo}`}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            Project
+                          </a>
+                        )}
+                        {candidate.notesUrl !== undefined && (
+                          <a
+                            href={candidate.notesUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            Release notes
+                          </a>
+                        )}
+                      </span>
                     </li>
                   ))}
                 </ul>
