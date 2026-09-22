@@ -28,6 +28,17 @@ export interface FlashBuild {
   boardId?: string;
   /** True when the build was made with a throwaway key: no future updates. */
   unsigned?: boolean;
+  /**
+   * Presentation, carried so a chooser can say what a thing IS rather than
+   * only its version and chip. All of it is already in the registry index and
+   * was simply unused: two board variants of one release rendered as two
+   * identical rows reading "P4 Cockpit 1.3.1 · esp32p4".
+   */
+  boardName?: string;
+  summary?: string;
+  repo?: string;
+  notesUrl?: string;
+  official?: boolean;
 }
 
 export interface FlashProgress {
