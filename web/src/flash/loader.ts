@@ -12,6 +12,7 @@ import { SAFE_FLASH_PARAMS } from "./preflight.js";
 import {
   FLASH_SIZE_BY_ID,
   isFlashId,
+  SPI_REG_BASE_FIXUP,
   targetFromChipName,
   USB_JTAG_SERIAL_PID,
 } from "./chips.js";
@@ -47,6 +48,8 @@ interface Loader {
   /** Radios and cores, e.g. ["Wi-Fi 6 (dual-band)", "BT 5 (LE)"]. */
   chip: {
     CHIP_NAME: string;
+    /** Base of the SPI flash controller; wrong for some chips upstream. */
+    SPI_REG_BASE?: number;
     getChipDescription?: (loader: Loader) => Promise<string>;
     getChipFeatures?: (loader: Loader) => Promise<string[]>;
     readMac?: (loader: Loader) => Promise<string>;
@@ -179,6 +182,15 @@ export async function connect(
   // chip.CHIP_NAME is the exact key our table uses.
   const description = await loader.main();
   const chipName = loader.chip.CHIP_NAME ?? description;
+  const target = targetFromChipName(chipName);
+
+  // Correct the SPI flash controller address before any flash read. On the
+  // C5/C6 esptool-js points at SPI0 instead of SPI1, so readFlashId() reads a
+  // register block that is not the flash controller and answers 0x000000.
+  const fixup = target === undefined ? undefined : SPI_REG_BASE_FIXUP[target];
+  if (fixup !== undefined && loader.chip.SPI_REG_BASE !== fixup) {
+    loader.chip.SPI_REG_BASE = fixup;
+  }
 
   let flashBytes: number | undefined;
   let flashSizeDetected = false;
@@ -261,7 +273,7 @@ export async function connect(
     transport,
     loader,
     chipName,
-    target: targetFromChipName(chipName),
+    target,
     flashBytes,
     flashSizeDetected,
     jedecId,
