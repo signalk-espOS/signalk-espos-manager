@@ -11,10 +11,24 @@
 import { SAFE_FLASH_PARAMS } from "./preflight.js";
 import {
   FLASH_SIZE_BY_ID,
+  isFlashId,
   targetFromChipName,
   USB_JTAG_SERIAL_PID,
 } from "./chips.js";
 import type { Target } from "./types.js";
+
+/**
+ * How many times to ask the flash chip for its id before giving up.
+ *
+ * The read is one SPI command, so a few attempts are cheap next to a flash
+ * that takes minutes, and the alternative is reporting a size that is wrong in
+ * the direction that blocks a legitimate write.
+ */
+const FLASH_ID_ATTEMPTS = 3;
+const FLASH_ID_RETRY_MS = 100;
+
+const sleep = (ms: number): Promise<void> =>
+  new Promise((resolve) => setTimeout(resolve, ms));
 
 /** Minimal shapes, so the app does not depend on esptool-js's own types. */
 interface Transport {
@@ -178,13 +192,34 @@ export async function connect(
     // be distinguishable — see Connection.flashSizeDetected.
     // Same extraction esptool-js uses: manufacturer in the low byte, size in
     // bits 16-23 (esploader.js flashId()/detectFlashSize()).
-    const jedec = await loader.readFlashId();
-    jedecId = jedec;
-    const sizeId = (jedec >> 16) & 0xff;
-    const known = FLASH_SIZE_BY_ID[sizeId];
-    if (known !== undefined) {
-      flashBytes = known;
-      flashSizeDetected = true;
+    let jedec = await loader.readFlashId();
+
+    // 0x000000 and 0xffffff are not ids: they are what the SPI read returns
+    // when the flash chip did not answer, and esptool-js's own main() warns on
+    // exactly these two values ("Failed to communicate with the flash chip").
+    // Seen on a Waveshare ESP32-C5 in Chrome, where the first read came back
+    // 0x000000 while the identical read over USB on another machine returned
+    // 0x184046 (16 MB). Retrying costs one SPI command and turns a permanent
+    // wrong answer into a correct one.
+    for (
+      let attempt = 0;
+      attempt < FLASH_ID_ATTEMPTS && !isFlashId(jedec);
+      attempt++
+    ) {
+      await sleep(FLASH_ID_RETRY_MS);
+      jedec = await loader.readFlashId();
+    }
+
+    // Only record an id that is one; a sentinel must not be shown as though
+    // the chip identified itself as something unrecognised.
+    if (isFlashId(jedec)) {
+      jedecId = jedec;
+      const sizeId = (jedec >> 16) & 0xff;
+      const known = FLASH_SIZE_BY_ID[sizeId];
+      if (known !== undefined) {
+        flashBytes = known;
+        flashSizeDetected = true;
+      }
     }
   } catch {
     // Fall through to the library's answer below.

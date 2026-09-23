@@ -124,3 +124,18 @@ export const FLASH_SIZE_BY_ID: Readonly<Record<number, number>> = {
   0x39: 32 * 1024 * 1024,
   0x3a: 64 * 1024 * 1024,
 };
+
+/**
+ * Is this a flash id at all?
+ *
+ * An all-zero or all-ones answer means the flash chip did not respond: these
+ * are the two values esptool-js itself warns about in `main()` ("Failed to
+ * communicate with the flash chip"). Treating either as an id turns a failed
+ * read into "this chip is not one we recognise", which sends someone looking
+ * at their hardware rather than at the read. Measured on a Waveshare ESP32-C5
+ * in Chrome, which returned 0x000000 where the same board over USB elsewhere
+ * returned 0x184046.
+ */
+export function isFlashId(jedec: number): boolean {
+  return jedec !== 0x000000 && jedec !== 0xffffff;
+}

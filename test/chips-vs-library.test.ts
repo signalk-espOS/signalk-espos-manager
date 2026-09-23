@@ -16,6 +16,7 @@ import {
   CHIP_NAME_TO_TARGET,
   FLASH_SIZE_BY_ID,
   targetFromChipName,
+  isFlashId,
 } from "../web/src/flash/chips.js";
 
 const TARGETS = Object.values(CHIP_NAME_TO_TARGET).filter(
@@ -201,5 +202,36 @@ describe("chip identity", () => {
         `${name} is not in CHIP_NAME_TO_TARGET`,
       ).toBeDefined();
     }
+  });
+});
+
+/**
+ * 0x000000 and 0xffffff are not flash ids.
+ *
+ * They are what the SPI read returns when the flash chip did not answer, and
+ * esptool-js's own main() warns on exactly these two values ("Failed to
+ * communicate with the flash chip"). Measured on a Waveshare ESP32-C5 in
+ * Chrome: the browser read 0x000000 while `esptool flash-id` over USB on the
+ * same board read 0x184046 (16 MB). Treating the sentinel as an id turns a
+ * failed read into "this chip is not one we recognise", which sends someone
+ * looking at their hardware instead of at the read.
+ */
+describe("isFlashId", () => {
+  it("rejects both sentinels the library itself warns about", () => {
+    expect(isFlashId(0x000000)).toBe(false);
+    expect(isFlashId(0xffffff)).toBe(false);
+  });
+
+  it("accepts the id this board really has", () => {
+    expect(isFlashId(0x184046)).toBe(true);
+  });
+
+  it("matches the values esploader.js warns on", () => {
+    const source = readFileSync(
+      new URL("../node_modules/esptool-js/lib/esploader.js", import.meta.url),
+      "utf8",
+    );
+    // The guard we are mirroring, so a library change is caught here.
+    expect(source).toMatch(/flashId === 0xffffff \|\| flashId === 0x000000/);
   });
 });
