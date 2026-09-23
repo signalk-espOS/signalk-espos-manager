@@ -105,20 +105,26 @@ export function checkFit(input: PreflightInput): CheckResult {
 
   if (input.imageBytes > input.detectedFlashBytes) {
     // An ASSUMED size must not block a write. esptool-js falls back to "4MB"
-    // when it cannot decode the flash id, and a fallback that is too small
-    // makes correct firmware look too big -- which is how a 16 MB Waveshare
-    // C5 was refused a 5.9 MB image it had ample room for. Say what is known
-    // and let the user decide; a genuinely too-large image fails the write
-    // safely, while a false refusal leaves them with no way forward at all.
+    // when it cannot read the flash id, and a fallback that is too small makes
+    // correct firmware look too big -- which is how a 16 MB Waveshare C5 was
+    // refused a 5.9 MB image it had ample room for.
+    //
+    // So this reports rather than refuses. It deliberately does NOT say the
+    // write is safe: the failed id read shares the SPI path a write uses, so
+    // it is not evidence the write will succeed, and if the board really is
+    // this small the write runs out of room partway. Say exactly what is known
+    // -- a guess, not a measurement -- and leave the decision with the person
+    // who can read the board's specification.
     if (input.flashSizeDetected === false) {
       return {
         id: "fit",
         ok: true,
         message:
           `The firmware is ${mb(input.imageBytes)} and this board's flash ` +
-          `size could not be read — assuming ${mb(input.detectedFlashBytes)}, ` +
-          `which would be too small. If the board's specification says it has ` +
-          `room, this is safe to write: the size was guessed, not measured.`,
+          `size could not be read — ${mb(input.detectedFlashBytes)} is a ` +
+          `guess, not a measurement, and it would be too small. Check the ` +
+          `board's specification: if it really is this small the write will ` +
+          `run out of room partway.`,
       };
     }
     return {

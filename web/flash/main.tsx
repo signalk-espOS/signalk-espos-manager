@@ -643,7 +643,7 @@ function App() {
                           : profile.flashSizeDetected
                             ? mb(profile.flashBytes)
                             : profile.jedecId === undefined
-                              ? `${mb(profile.flashBytes)} assumed — the flash chip did not answer when asked to identify itself. The board is almost certainly fine; this read is unreliable over Web Serial.`
+                              ? `${mb(profile.flashBytes)} assumed — the flash chip did not answer when asked to identify itself, so this is a fallback rather than a reading. Check the board's specification.`
                               : `${mb(profile.flashBytes)} assumed — this flash chip is not one we recognise (id 0x${profile.jedecId.toString(16).padStart(6, "0")})`}
                       </dd>
                     </div>
