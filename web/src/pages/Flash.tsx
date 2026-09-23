@@ -200,14 +200,26 @@ export function FlashPage() {
       <div class="card">
         <h2>Done</h2>
         <p>
-          {build?.projectName} {build?.version} has been written and the board
-          has restarted.
+          {build?.projectName} {build?.version} has been written.
         </p>
-        <p class="muted small">
-          It has no network settings yet. Connect to the board's own WiFi
-          network to tell it about your boat's network — once it joins, it
-          appears in the device list here.
-        </p>
+        {/* Same ordering as the hosted flasher, and for the same reason: the
+            power cycle is the step people get stuck on. See web/flash/main.tsx. */}
+        <ol class="next-steps">
+          <li>
+            <strong>Unplug the board and plug it back in.</strong> It was reset
+            after writing, but a full power cycle is what reliably starts the
+            new firmware.
+          </li>
+          <li>
+            Join the open WiFi network named <code>espOS-</code> followed by
+            four characters, and tell the board about your boat's network at{" "}
+            <a href="http://192.168.4.1/" target="_blank" rel="noreferrer">
+              http://192.168.4.1/
+            </a>
+            .
+          </li>
+          <li>Once it joins, it appears in the device list here.</li>
+        </ol>
         <button
           onClick={() => {
             setFinished(false);

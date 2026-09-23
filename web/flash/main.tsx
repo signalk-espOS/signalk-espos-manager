@@ -407,14 +407,39 @@ function App() {
         <div class="card">
           <h2>Done</h2>
           <p>
-            {build?.projectName} {build?.version} has been written and the board
-            has restarted.
+            {build?.projectName} {build?.version} has been written.
           </p>
-          <p class="muted small">
-            It has no network settings yet. Connect to the board's own WiFi
-            network to tell it about yours. Once it joins, the espOS Manager
-            plugin on your Signal K server will find it.
-          </p>
+          {/*
+            The power cycle is first because it is the step people get stuck
+            on. esptool-js resets the board after writing, but that reset is
+            not always enough to get it out of the state the flash sequence
+            left it in: a C5 written from this page showed no WiFi at all
+            until it was unplugged and plugged back in. Telling someone to
+            look for a network that is not there yet costs them far more time
+            than one extra instruction.
+          */}
+          <ol class="next-steps">
+            <li>
+              <strong>Unplug the board and plug it back in.</strong> It was
+              reset after writing, but a full power cycle is what reliably
+              starts the new firmware.
+            </li>
+            <li>
+              Look for a WiFi network named <code>espOS-</code> followed by four
+              characters, and join it. It is open — no password.
+            </li>
+            <li>
+              A setup page should open by itself. If it does not, go to{" "}
+              <a href="http://192.168.4.1/" target="_blank" rel="noreferrer">
+                http://192.168.4.1/
+              </a>{" "}
+              and tell the board about your own WiFi.
+            </li>
+            <li>
+              Once it joins, the espOS Manager plugin on your Signal K server
+              will find it.
+            </li>
+          </ol>
           <button
             onClick={() => {
               setFinished(false);

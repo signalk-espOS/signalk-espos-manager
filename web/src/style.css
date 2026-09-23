@@ -480,3 +480,16 @@ code {
   padding-left: 8px;
   padding-right: 8px;
 }
+
+/* The steps after a successful write. Numbered because they are ordered and
+   the first one is the one people skip: the board needs a power cycle, not
+   just the reset the flasher already did. */
+.next-steps {
+  margin: 8px 0 12px;
+  padding-left: 22px;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+.next-steps li + li {
+  margin-top: 6px;
+}
