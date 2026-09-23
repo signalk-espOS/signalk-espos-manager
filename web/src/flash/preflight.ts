@@ -117,8 +117,8 @@ export function checkFit(input: PreflightInput): CheckResult {
         message:
           `The firmware is ${mb(input.imageBytes)} and this board's flash ` +
           `size could not be read — assuming ${mb(input.detectedFlashBytes)}, ` +
-          `which would be too small. Check the board's specification before ` +
-          `writing.`,
+          `which would be too small. If the board's specification says it has ` +
+          `room, this is safe to write: the size was guessed, not measured.`,
       };
     }
     return {

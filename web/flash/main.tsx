@@ -642,10 +642,9 @@ function App() {
                           ? "could not be read"
                           : profile.flashSizeDetected
                             ? mb(profile.flashBytes)
-                            : `${mb(profile.flashBytes)} assumed — this flash chip is not one we recognise` +
-                              (profile.jedecId === undefined
-                                ? " (it did not answer)"
-                                : ` (id 0x${profile.jedecId.toString(16).padStart(6, "0")})`)}
+                            : profile.jedecId === undefined
+                              ? `${mb(profile.flashBytes)} assumed — the flash chip did not answer when asked to identify itself. The board is almost certainly fine; this read is unreliable over Web Serial.`
+                              : `${mb(profile.flashBytes)} assumed — this flash chip is not one we recognise (id 0x${profile.jedecId.toString(16).padStart(6, "0")})`}
                       </dd>
                     </div>
                     {profile?.features !== undefined &&
