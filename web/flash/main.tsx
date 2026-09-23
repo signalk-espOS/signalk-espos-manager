@@ -222,13 +222,48 @@ function App() {
     );
   };
 
+  /**
+   * Connect and ask the board what it is, before any firmware is chosen.
+   *
+   * The list has five rows reading "ESP32-<x> development board", differing by
+   * two characters in the middle, and the page already knows which chip is
+   * plugged in -- so making someone find their own row unaided is a trap we
+   * built. Identifying first turns the list into a short one.
+   */
+  const onIdentify = async (): Promise<void> => {
+    setError(undefined);
+    setBusy(true);
+    try {
+      const connection = await connect(() => {});
+      setChipName(connection.chipName);
+      setNativeUsb(connection.nativeUsb);
+      setProfile({
+        description: connection.chipDescription,
+        features: connection.features,
+        flashBytes: connection.flashBytes,
+        flashSizeDetected: connection.flashSizeDetected,
+        jedecId: connection.jedecId,
+        mac: connection.mac,
+      });
+      // Narrow the list to what this board can actually run.
+      if (connection.target !== undefined) setChipFilter(connection.target);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const onPick = async (chosen: FlashBuild): Promise<void> => {
     setBuild(chosen);
     setError(undefined);
     setDownloadError(undefined);
     setBusy(true);
     try {
-      const connection = await connect(() => {});
+      // Reuse the port if identify already opened it: a second
+      // requestPort() prompt for a board we are already talking to is
+      // confusing, and on some systems the first handle still holds the port.
+      const connection = activeConnection() ?? (await connect(() => {}));
       setChipName(connection.chipName);
       setNativeUsb(connection.nativeUsb);
       setProfile({
@@ -394,10 +429,37 @@ function App() {
       ) : (
         <>
           <div class="card">
+            {chipName === undefined ? (
+              <>
+                <p>
+                  <button disabled={busy} onClick={() => void onIdentify()}>
+                    Connect the board and identify it
+                  </button>
+                </p>
+                <p class="muted small">
+                  Optional, and much easier than finding your board in the list:
+                  several boards differ only by a couple of characters in their
+                  name. Identifying first shows only what this board can run.
+                </p>
+              </>
+            ) : (
+              <p class="muted small">
+                Showing firmware for the{" "}
+                <strong>{profile?.description ?? chipName}</strong> you
+                connected.{" "}
+                <button
+                  class="linkish"
+                  onClick={() => {
+                    setChipFilter("all");
+                  }}
+                >
+                  Show every board instead
+                </button>
+              </p>
+            )}
             <p class="muted small">
-              Connect the board by USB and pick its firmware. Nothing is sent
-              anywhere: the firmware downloads from GitHub straight to your
-              browser, and your browser writes it to the board.
+              Nothing is sent anywhere: the firmware downloads from GitHub
+              straight to your browser, and your browser writes it to the board.
             </p>
           </div>
 
@@ -466,9 +528,24 @@ function App() {
                     )}
                     <ul class="projects">
                       {shown.map((entry) => (
-                        <li class="board-entry" key={entry.id}>
+                        <li
+                          class={
+                            activeConnection()?.target === entry.target
+                              ? "board-entry matches"
+                              : "board-entry"
+                          }
+                          key={entry.id}
+                        >
                           <div class="board-head">
                             <span class="board-name">{entry.name}</span>
+                            {activeConnection()?.target === entry.target && (
+                              <span
+                                class="pill ok"
+                                title="This matches the board you connected."
+                              >
+                                your board
+                              </span>
+                            )}
                             <span class="muted small">{entry.target}</span>
                             {entry.buyUrl !== undefined && (
                               <a

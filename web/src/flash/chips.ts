@@ -139,3 +139,34 @@ export const FLASH_SIZE_BY_ID: Readonly<Record<number, number>> = {
 export function isFlashId(jedec: number): boolean {
   return jedec !== 0x000000 && jedec !== 0xffffff;
 }
+
+/**
+ * Correct `SPI_REG_BASE` for chips where esptool-js has the wrong one.
+ *
+ * The flash controller is SPI1. esptool-js's `ESP32C6ROM` sets
+ * `SPI_REG_BASE = 0x60002000`, which is SPI0, and never applies the override
+ * that Python esptool does (`esptool/targets/esp32c6.py`:
+ * `SPI_REG_BASE = 0x60003000`). `ESP32C5ROM extends ESP32C6ROM` in both tools,
+ * so the C5 inherits the wrong value too.
+ *
+ * The visible symptom is `readFlashId()` returning 0x000000 -- reading a
+ * register block that is not the flash controller -- so the flash size falls
+ * back to "4MB" and correct firmware looks too big for the board. Measured on a
+ * Waveshare ESP32-C5: Chrome read 0x000000, Python esptool over the same port
+ * read 0x184046 (16 MB).
+ *
+ * Verified by comparing the two implementations target by target:
+ *
+ *            esptool-js    python esptool
+ *   esp32c3  0x60002000    0x60002000     (agree)
+ *   esp32c6  0x60002000    0x60003000     (differ)
+ *   esp32c5  inherits c6   inherits c6
+ *
+ * Applied to the loader's chip object after connecting. Remove an entry once
+ * the installed esptool-js carries the right value -- the test beside this
+ * table fails when that happens, rather than leaving a stale patch in place.
+ */
+export const SPI_REG_BASE_FIXUP: Readonly<Partial<Record<Target, number>>> = {
+  esp32c5: 0x60003000,
+  esp32c6: 0x60003000,
+};

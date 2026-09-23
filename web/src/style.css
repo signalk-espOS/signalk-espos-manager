@@ -470,3 +470,13 @@ code {
 .chip-profile dd {
   margin: 0;
 }
+
+/* The row matching the connected chip. Five rows read "ESP32-<x> development
+   board" and differ by two characters, so the match needs to be visible
+   without reading carefully. */
+.board-entry.matches {
+  background: rgba(106, 169, 255, 0.08);
+  border-radius: 6px;
+  padding-left: 8px;
+  padding-right: 8px;
+}
