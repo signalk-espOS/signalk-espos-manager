@@ -443,19 +443,40 @@ function App() {
                 </p>
               </>
             ) : (
-              <p class="muted small">
-                Showing firmware for the{" "}
-                <strong>{profile?.description ?? chipName}</strong> you
-                connected.{" "}
-                <button
-                  class="linkish"
-                  onClick={() => {
-                    setChipFilter("all");
-                  }}
-                >
-                  Show every board instead
-                </button>
-              </p>
+              <>
+                <p class="muted small">
+                  Showing boards that use the{" "}
+                  <strong>{profile?.description ?? chipName}</strong> you
+                  connected. Several boards can share one chip, so check the
+                  name against the hardware in front of you before writing.
+                </p>
+                <p class="small">
+                  <button
+                    class="linkish"
+                    onClick={() => {
+                      setChipFilter("all");
+                    }}
+                  >
+                    Show every board
+                  </button>
+                  {" · "}
+                  <button
+                    class="linkish"
+                    onClick={() => {
+                      void (async () => {
+                        await disconnect();
+                        setChipName(undefined);
+                        setProfile(undefined);
+                        setChipFilter("all");
+                        setReport(undefined);
+                        setBuild(undefined);
+                      })();
+                    }}
+                  >
+                    Identify another board
+                  </button>
+                </p>
+              </>
             )}
             <p class="muted small">
               Nothing is sent anywhere: the firmware downloads from GitHub
@@ -541,9 +562,9 @@ function App() {
                             {activeConnection()?.target === entry.target && (
                               <span
                                 class="pill ok"
-                                title="This matches the board you connected."
+                                title="This board uses the chip you connected. Several different boards can share one chip, so check the name against the hardware in front of you."
                               >
-                                your board
+                                matches your chip
                               </span>
                             )}
                             <span class="muted small">{entry.target}</span>
