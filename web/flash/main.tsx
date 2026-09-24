@@ -15,7 +15,10 @@
 import { render } from "preact";
 import { useEffect, useMemo, useState } from "preact/hooks";
 import {
+  allBuilds,
   boardCatalogue,
+  esposLag,
+  isPrerelease,
   targetsInCatalogue,
   type BoardEntry,
   type BoardOffer,
@@ -62,6 +65,7 @@ interface RegistryProject {
     version: string;
     channel: string;
     notesUrl?: string;
+    espos?: string;
     builds: RegistryBuild[];
   }[];
 }
@@ -114,6 +118,34 @@ function mb(bytes: number | undefined): string {
 }
 
 /**
+ * What espOS runtime a build carries, and whether a newer one exists.
+ *
+ * Only says something when it has something to say: silent when the registry
+ * could not establish the version, and silent when the build is current, so the
+ * line appears exactly when it is worth reading.
+ */
+function EsposLine({
+  build,
+  latest,
+}: {
+  build: FlashBuild;
+  latest: string | undefined;
+}) {
+  const lag = esposLag(build.espos, latest);
+  if (build.espos === undefined) return null;
+  if (lag === "behind") {
+    return (
+      <span class="muted small espos-line">
+        Built with espOS {build.espos}; {latest} is out. A fix can land in the
+        runtime rather than the firmware, so a newer release of this project may
+        carry one even when its own version looks similar.
+      </span>
+    );
+  }
+  return <span class="muted small espos-line">espOS {build.espos}</span>;
+}
+
+/**
  * The versions other than the one the main button installs.
  *
  * Collapsed by default: the newest stable is what almost everyone wants, and a
@@ -146,12 +178,12 @@ function OtherVersions({
             <button disabled={busy} onClick={() => onPick(b)}>
               {b.version}
             </button>
-            {b.channel === "beta" && (
+            {isPrerelease(b) && (
               <span
                 class="pill warn"
                 title="A prerelease. Offered for testing; expect it to be less tried than the stable release."
               >
-                beta
+                {b.channel ?? "prerelease"}
               </span>
             )}
             {b.unsigned === true && (
@@ -160,6 +192,9 @@ function OtherVersions({
               </span>
             )}
             <span class="muted"> {mb(b.mergedBytes)}</span>
+            {b.espos !== undefined && (
+              <span class="muted"> · espOS {b.espos}</span>
+            )}
             {b.notesUrl !== undefined && (
               <>
                 {" "}
@@ -209,6 +244,9 @@ function App() {
   const [registryError, setRegistryError] = useState<string | undefined>(
     undefined,
   );
+  /* The newest espOS runtime, so a build made against an older one can say so.
+   * From the index, because a blank board cannot be asked. */
+  const [esposLatest, setEsposLatest] = useState<string | undefined>(undefined);
   const [build, setBuild] = useState<FlashBuild | undefined>(undefined);
   const [report, setReport] = useState<PreflightReport | undefined>(undefined);
   const [head, setHead] = useState<Uint8Array | undefined>(undefined);
@@ -247,8 +285,12 @@ function App() {
       try {
         const response = await fetch(REGISTRY_URL);
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        const body = (await response.json()) as { projects: RegistryProject[] };
+        const body = (await response.json()) as {
+          projects: RegistryProject[];
+          esposLatest?: string;
+        };
         setProjects(body.projects);
+        setEsposLatest(body.esposLatest);
       } catch (e) {
         setRegistryError(e instanceof Error ? e.message : String(e));
       }
@@ -424,30 +466,22 @@ function App() {
       ? catalogue
       : catalogue.filter((entry) => entry.target === chipFilter);
 
-  const flashable: FlashBuild[] = (projects ?? []).flatMap((project) =>
-    (project.releases ?? []).slice(0, 1).flatMap((release) =>
-      release.builds
-        .filter((b) => b.mergedUrl !== undefined)
-        .map((b) => ({
-          projectId: project.id,
-          projectName: project.name,
-          version: release.version,
-          target: b.target as Target,
-          mergedUrl: b.mergedUrl as string,
-          mergedBytes: b.mergedBytes,
-          boardId: b.boardId,
-          unsigned: b.unsigned,
-          // The board this image is FOR. Without it two variants of one
-          // release are indistinguishable, which is how this list came to
-          // show "P4 Cockpit 1.3.1 · esp32p4" twice.
-          boardName: (project.boards ?? []).find((x) => x.id === b.boardId)
-            ?.name,
-          summary: project.summary,
-          repo: project.repo,
-          notesUrl: release.notesUrl,
-          official: project.official,
-        })),
-    ),
+  /* Derived from the same catalogue as the board-first view, not projected
+   * again from the registry. The hand-rolled copy this replaces had drifted in
+   * three fields -- it never carried mergedWebUrl, so picking anything here
+   * failed as "no browser-readable copy" even for a project that publishes a
+   * mirror, and it carried neither the channel nor the espOS version, so betas
+   * were unlabelled and the runtime line never appeared. One source, so the two
+   * views cannot disagree about what a build is.
+   *
+   */
+  /* Every offered version, including projects the board-first view cannot place
+   * because they declare no boards. One implementation in the catalogue, so the
+   * two views cannot disagree about what a build is -- only about which ones
+   * they show. */
+  const flashable: FlashBuild[] = useMemo(
+    () => allBuilds(projects ?? []),
+    [projects],
   );
 
   return (
@@ -687,12 +721,13 @@ function App() {
                                         {offer.official === true && (
                                           <span class="pill ok">official</span>
                                         )}
-                                        {offer.build.channel === "beta" && (
+                                        {isPrerelease(offer.build) && (
                                           <span
                                             class="pill warn"
                                             title="This project has published no stable release for this board yet, so the newest prerelease is what is offered."
                                           >
-                                            beta
+                                            {offer.build.channel ??
+                                              "prerelease"}
                                           </span>
                                         )}
                                         {offer.build.unsigned === true && (
@@ -713,6 +748,10 @@ function App() {
                                         {mb(offer.build.mergedBytes)}
                                       </span>
                                     </button>
+                                    <EsposLine
+                                      build={offer.build}
+                                      latest={esposLatest}
+                                    />
                                     {offer.note !== undefined && (
                                       <span class="muted small offer-note">
                                         {offer.note}
@@ -762,7 +801,7 @@ function App() {
                 <ul class="projects">
                   {flashable.map((candidate) => (
                     <li
-                      key={`${candidate.projectId}-${candidate.target}-${
+                      key={`${candidate.projectId}-${candidate.version}-${candidate.target}-${
                         candidate.boardId ?? "any"
                       }`}
                       class="flash-choice"
@@ -775,6 +814,14 @@ function App() {
                           {candidate.projectName} {candidate.version}
                           {candidate.official === true && (
                             <span class="pill ok">official</span>
+                          )}
+                          {isPrerelease(candidate) && (
+                            <span
+                              class="pill warn"
+                              title="A prerelease. Offered for testing; expect it to be less tried than the stable release."
+                            >
+                              {candidate.channel ?? "prerelease"}
+                            </span>
                           )}
                           {candidate.unsigned === true && (
                             <span
@@ -801,6 +848,7 @@ function App() {
                             ` · ${mb(candidate.mergedBytes)}`}
                         </span>
                       </button>
+                      <EsposLine build={candidate} latest={esposLatest} />
                       <span class="flash-links">
                         {candidate.repo !== undefined && (
                           <a

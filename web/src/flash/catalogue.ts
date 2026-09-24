@@ -68,6 +68,12 @@ export interface CatalogueRelease {
   version: string;
   channel: string;
   notesUrl?: string;
+  /**
+   * The espOS version this release was built against, when the registry could
+   * establish it from the project's submodule pin. Absent for a project that
+   * pinned an untagged commit, or one that does not use a submodule at all.
+   */
+  espos?: string;
   builds: CatalogueBuild[];
 }
 
@@ -88,6 +94,48 @@ export interface CatalogueProject {
   deprecated?: boolean | string;
   boards?: CatalogueBoard[];
   releases?: CatalogueRelease[];
+}
+
+/**
+ * Is this build a prerelease?
+ *
+ * Anything that is not "stable", rather than only "beta". The polarity matters:
+ * today the registry emits exactly those two values, but a release's `channel`
+ * is generated rather than schema-checked, and a `!== "beta"` test would make a
+ * future "rc" the DEFAULT install rather than an opt-in. Wrong in this direction
+ * hides a channel nobody publishes yet; wrong in the other hands someone a
+ * prerelease they never asked for.
+ *
+ * An ABSENT channel is stable, so an index that omits the field keeps working
+ * rather than treating every build as a prerelease.
+ */
+export function isPrerelease(build: { channel?: string }): boolean {
+  return build.channel !== undefined && build.channel !== "stable";
+}
+
+/**
+ * How a build's espOS runtime compares to the newest released one.
+ *
+ * Worth surfacing because a fix can land in the runtime rather than the
+ * application: a firmware whose own version has not changed can still be
+ * missing something, and nothing else on the page would show it. A flasher has
+ * no other way to find out either -- it talks to a blank board, and an
+ * unflashed board cannot be asked what it would have run.
+ *
+ * `unknown` when either side is missing, and it stays unknown rather than
+ * guessing: a project that pinned an untagged espOS commit records no version,
+ * and claiming it is current would be worse than saying nothing.
+ */
+export type EsposLag = "current" | "behind" | "ahead" | "unknown";
+
+export function esposLag(
+  buildEspos: string | undefined,
+  latest: string | undefined,
+): EsposLag {
+  if (buildEspos === undefined || latest === undefined) return "unknown";
+  const d = compareVersions(buildEspos, latest);
+  if (d === 0) return "current";
+  return d < 0 ? "behind" : "ahead";
 }
 
 export type OfferState = "flashable" | "ota-only" | "ambiguous" | "none";
@@ -185,7 +233,12 @@ function toBuild(
     boardId: b.boardId,
     unsigned: b.unsigned,
     channel: release.channel,
-    boardName: board.name,
+    espos: release.espos,
+    /* Empty means "no board to name" -- allBuilds() passes a placeholder board
+     * for a project that declares none. undefined, not "", so the page's
+     * "any <chip> board" fallback fires: a `??` slips past an empty string and
+     * renders a blank where the board name goes. */
+    boardName: board.name === "" ? undefined : board.name,
     summary: project.summary,
     repo: project.repo,
     notesUrl: release.notesUrl,
@@ -319,8 +372,17 @@ function offerFor(
   /* Stable is the default, never a prerelease: someone who wants a beta can
    * pick one, and nobody should be handed one by accident. This mirrors npm,
    * where `latest` stays stable while a beta lives on its own tag. */
-  const stable = found.filter((b) => b.channel !== "beta");
-  const betas = found.filter((b) => b.channel === "beta");
+  /* Anything that is not "stable" is a prerelease, rather than only "beta".
+   * The polarity matters: today the registry emits exactly those two values, but
+   * `channel` on a release is generated rather than schema-checked, and a
+   * `!== "beta"` test would make a future "rc" the DEFAULT install rather than
+   * an opt-in. Wrong in that direction hands someone a prerelease they never
+   * asked for; wrong in the other only hides a channel nobody publishes yet.
+   *
+   * An ABSENT channel stays stable, so an index that omits the field keeps
+   * working instead of having every build treated as a prerelease. */
+  const stable = found.filter((b) => !isPrerelease(b));
+  const betas = found.filter(isPrerelease);
   const newestStable = stable[0];
 
   /* A beta only earns a place while it is ahead of the newest stable. Once a
@@ -427,4 +489,45 @@ export function targetsInCatalogue(entries: BoardEntry[]): Target[] {
   const seen = new Set<Target>();
   for (const entry of entries) seen.add(entry.target);
   return [...seen].sort();
+}
+
+/**
+ * Every installable build, for the firmware-first view.
+ *
+ * Not `boardCatalogue(...).flatMap(...)`, for two reasons that only show up at
+ * the edges:
+ *
+ *   - `boards` is optional in the registry schema, so a project may declare
+ *     none. The board-first view cannot place such a project at all -- there is
+ *     no board to file it under -- and deriving this list from that one made it
+ *     invisible in BOTH views, which is worse than the duplicate row the
+ *     board-first view was built to remove.
+ *   - this view exists for someone who already knows what they want and is
+ *     after a particular release, so it lists every offered version rather than
+ *     just the default one.
+ *
+ * Still one implementation: it reuses `offerFor` through the catalogue for the
+ * placed case, so the two views cannot disagree about what a build IS. They
+ * differ only in which builds they show, which is the point of having two.
+ */
+export function allBuilds(projects: CatalogueProject[]): FlashBuild[] {
+  const out: FlashBuild[] = [];
+  for (const entry of boardCatalogue(projects)) {
+    for (const offer of entry.offers) out.push(...offer.builds);
+  }
+  /* Projects the board-first view could not place. A synthetic board name is
+   * deliberately NOT invented: the row says the chip, and the chooser's own
+   * checks still refuse a wrong-chip write. */
+  for (const project of projects) {
+    if ((project.boards ?? []).length > 0) continue;
+    for (const release of releasesNewestFirst(project)) {
+      for (const b of release.builds) {
+        if (b.mergedUrl === undefined) continue;
+        out.push(
+          toBuild(project, release, { id: "", target: b.target, name: "" }, b),
+        );
+      }
+    }
+  }
+  return out;
 }
