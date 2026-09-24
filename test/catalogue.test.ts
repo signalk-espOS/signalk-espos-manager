@@ -14,6 +14,7 @@ import {
   boardCatalogue,
   targetsInCatalogue,
   type CatalogueProject,
+  esposLag,
 } from "../web/src/flash/catalogue.js";
 
 /** The cockpit: two P4 panels, per-board builds, plus an older agnostic one. */
@@ -557,5 +558,57 @@ describe("version choices", () => {
     const offer = boardCatalogue([oldOtaOnly])[0]?.offers[0];
     expect(offer?.build?.version).toBe("2.0.0");
     expect(offer?.note).toBeUndefined();
+  });
+});
+
+/**
+ * Which espOS runtime a build carries.
+ *
+ * A fix can land in the runtime rather than the application, so a firmware whose
+ * own version is unchanged can still be missing one. The registry establishes
+ * this from the project's submodule pin; the flasher has no other way to know,
+ * because it talks to a blank board and an unflashed board cannot be asked.
+ */
+describe("espOS runtime version", () => {
+  it("carries the release's espOS version onto every build", () => {
+    const withEspos: CatalogueProject = {
+      id: "e",
+      name: "E",
+      repo: "example/e",
+      boards: [{ id: "c6", target: "esp32c6", name: "C6" }],
+      releases: [
+        {
+          version: "1.0.0",
+          channel: "stable",
+          espos: "0.10.2",
+          builds: [
+            {
+              target: "esp32c6",
+              boardId: "c6",
+              mergedUrl: "https://example.invalid/1.bin",
+            },
+          ],
+        },
+      ],
+    };
+    expect(boardCatalogue([withEspos])[0]?.offers[0]?.build?.espos).toBe(
+      "0.10.2",
+    );
+  });
+
+  it("compares runtime versions numerically, not lexically", () => {
+    // 0.10.2 is NEWER than 0.9.0, though it sorts below it as a string. Getting
+    // this backwards would tell someone a current build was out of date.
+    expect(esposLag("0.10.2", "0.10.3")).toBe("behind");
+    expect(esposLag("0.10.3", "0.10.3")).toBe("current");
+    expect(esposLag("0.10.2", "0.9.0")).toBe("ahead");
+  });
+
+  it("stays unknown rather than guessing when either side is missing", () => {
+    // A project that pinned an untagged espOS commit records no version, and
+    // calling that "current" would be worse than saying nothing.
+    expect(esposLag(undefined, "0.10.3")).toBe("unknown");
+    expect(esposLag("0.10.2", undefined)).toBe("unknown");
+    expect(esposLag(undefined, undefined)).toBe("unknown");
   });
 });

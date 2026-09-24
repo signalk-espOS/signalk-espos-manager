@@ -527,3 +527,10 @@ code {
   display: block;
   padding: 2px 12px 0;
 }
+
+/* Which espOS runtime a build carries. Present only when it says something:
+   absent when unknown, and a bare version when current. */
+.espos-line {
+  display: block;
+  padding: 2px 12px 0;
+}

@@ -16,6 +16,7 @@ import { render } from "preact";
 import { useEffect, useMemo, useState } from "preact/hooks";
 import {
   boardCatalogue,
+  esposLag,
   targetsInCatalogue,
   type BoardEntry,
   type BoardOffer,
@@ -62,6 +63,7 @@ interface RegistryProject {
     version: string;
     channel: string;
     notesUrl?: string;
+    espos?: string;
     builds: RegistryBuild[];
   }[];
 }
@@ -114,6 +116,34 @@ function mb(bytes: number | undefined): string {
 }
 
 /**
+ * What espOS runtime a build carries, and whether a newer one exists.
+ *
+ * Only says something when it has something to say: silent when the registry
+ * could not establish the version, and silent when the build is current, so the
+ * line appears exactly when it is worth reading.
+ */
+function EsposLine({
+  build,
+  latest,
+}: {
+  build: FlashBuild;
+  latest: string | undefined;
+}) {
+  const lag = esposLag(build.espos, latest);
+  if (build.espos === undefined) return null;
+  if (lag === "behind") {
+    return (
+      <span class="muted small espos-line">
+        Built with espOS {build.espos}; {latest} is out. A fix can land in the
+        runtime rather than the firmware, so a newer release of this project may
+        carry one even when its own version looks similar.
+      </span>
+    );
+  }
+  return <span class="muted small espos-line">espOS {build.espos}</span>;
+}
+
+/**
  * The versions other than the one the main button installs.
  *
  * Collapsed by default: the newest stable is what almost everyone wants, and a
@@ -160,6 +190,9 @@ function OtherVersions({
               </span>
             )}
             <span class="muted"> {mb(b.mergedBytes)}</span>
+            {b.espos !== undefined && (
+              <span class="muted"> · espOS {b.espos}</span>
+            )}
             {b.notesUrl !== undefined && (
               <>
                 {" "}
@@ -209,6 +242,9 @@ function App() {
   const [registryError, setRegistryError] = useState<string | undefined>(
     undefined,
   );
+  /* The newest espOS runtime, so a build made against an older one can say so.
+   * From the index, because a blank board cannot be asked. */
+  const [esposLatest, setEsposLatest] = useState<string | undefined>(undefined);
   const [build, setBuild] = useState<FlashBuild | undefined>(undefined);
   const [report, setReport] = useState<PreflightReport | undefined>(undefined);
   const [head, setHead] = useState<Uint8Array | undefined>(undefined);
@@ -247,8 +283,12 @@ function App() {
       try {
         const response = await fetch(REGISTRY_URL);
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        const body = (await response.json()) as { projects: RegistryProject[] };
+        const body = (await response.json()) as {
+          projects: RegistryProject[];
+          esposLatest?: string;
+        };
         setProjects(body.projects);
+        setEsposLatest(body.esposLatest);
       } catch (e) {
         setRegistryError(e instanceof Error ? e.message : String(e));
       }
@@ -713,6 +753,10 @@ function App() {
                                         {mb(offer.build.mergedBytes)}
                                       </span>
                                     </button>
+                                    <EsposLine
+                                      build={offer.build}
+                                      latest={esposLatest}
+                                    />
                                     {offer.note !== undefined && (
                                       <span class="muted small offer-note">
                                         {offer.note}

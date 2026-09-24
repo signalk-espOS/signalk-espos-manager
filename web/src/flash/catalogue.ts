@@ -68,6 +68,12 @@ export interface CatalogueRelease {
   version: string;
   channel: string;
   notesUrl?: string;
+  /**
+   * The espOS version this release was built against, when the registry could
+   * establish it from the project's submodule pin. Absent for a project that
+   * pinned an untagged commit, or one that does not use a submodule at all.
+   */
+  espos?: string;
   builds: CatalogueBuild[];
 }
 
@@ -88,6 +94,31 @@ export interface CatalogueProject {
   deprecated?: boolean | string;
   boards?: CatalogueBoard[];
   releases?: CatalogueRelease[];
+}
+
+/**
+ * How a build's espOS runtime compares to the newest released one.
+ *
+ * Worth surfacing because a fix can land in the runtime rather than the
+ * application: a firmware whose own version has not changed can still be
+ * missing something, and nothing else on the page would show it. A flasher has
+ * no other way to find out either -- it talks to a blank board, and an
+ * unflashed board cannot be asked what it would have run.
+ *
+ * `unknown` when either side is missing, and it stays unknown rather than
+ * guessing: a project that pinned an untagged espOS commit records no version,
+ * and claiming it is current would be worse than saying nothing.
+ */
+export type EsposLag = "current" | "behind" | "ahead" | "unknown";
+
+export function esposLag(
+  buildEspos: string | undefined,
+  latest: string | undefined,
+): EsposLag {
+  if (buildEspos === undefined || latest === undefined) return "unknown";
+  const d = compareVersions(buildEspos, latest);
+  if (d === 0) return "current";
+  return d < 0 ? "behind" : "ahead";
 }
 
 export type OfferState = "flashable" | "ota-only" | "ambiguous" | "none";
@@ -185,6 +216,7 @@ function toBuild(
     boardId: b.boardId,
     unsigned: b.unsigned,
     channel: release.channel,
+    espos: release.espos,
     boardName: board.name,
     summary: project.summary,
     repo: project.repo,

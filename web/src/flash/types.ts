@@ -43,6 +43,12 @@ export interface FlashBuild {
    */
   channel?: string;
   /**
+   * The espOS runtime this build was made against, when the registry could
+   * establish it. A fix can land in the runtime rather than the application, so
+   * a firmware whose own version is unchanged can still be missing one.
+   */
+  espos?: string;
+  /**
    * Presentation, carried so a chooser can say what a thing IS rather than
    * only its version and chip. All of it is already in the registry index and
    * was simply unused: two board variants of one release rendered as two
