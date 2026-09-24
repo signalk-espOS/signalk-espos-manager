@@ -38,6 +38,11 @@ export interface FlashBuild {
   /** True when the build was made with a throwaway key: no future updates. */
   unsigned?: boolean;
   /**
+   * The release channel, so a prerelease can be labelled rather than silently
+   * offered as though it were stable.
+   */
+  channel?: string;
+  /**
    * Presentation, carried so a chooser can say what a thing IS rather than
    * only its version and chip. All of it is already in the registry index and
    * was simply unused: two board variants of one release rendered as two

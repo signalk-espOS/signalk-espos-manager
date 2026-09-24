@@ -36,6 +36,12 @@
  * to look for firmware that was never going to exist.
  */
 
+/* The server's comparator, not a second one. It is pure (its only import is a
+ * type) and it was verified against espOS's own espos_ota_version_cmp over
+ * 3000 random pairs, so a local reimplementation could only be worse -- and a
+ * flasher that orders versions differently from the device that installs them
+ * is a bug waiting to happen. */
+import { compareVersions } from "../../../src/mirror/version.js";
 import type { FlashBuild, Target } from "./types.js";
 
 /** The subset of the registry index this module reads. */
@@ -97,8 +103,22 @@ export interface BoardOffer {
   state: OfferState;
   /** Why, in a sentence, for every state except `flashable`. */
   reason?: string;
-  /** Present exactly when `state === "flashable"`. */
+  /**
+   * The version a click installs: the newest STABLE one, or the newest beta
+   * only when there is no stable at all. Present exactly when
+   * `state === "flashable"`.
+   */
   build?: FlashBuild;
+  /**
+   * Every version installable on this board, newest first, betas ahead of
+   * stable. Empty unless `state === "flashable"`.
+   *
+   * More than one because "the latest" is not the only thing someone needs:
+   * a release can regress and rolling back is the first thing an owner reaches
+   * for, and a project with a prerelease channel is worth offering to whoever
+   * wants to test one.
+   */
+  builds: FlashBuild[];
 }
 
 /** A board someone might be holding, and everything it can run. */
@@ -126,13 +146,59 @@ function releasesNewestFirst(project: CatalogueProject): CatalogueRelease[] {
 }
 
 /**
- * How this project stands for this board.
+ * Build a FlashBuild from one release's entry for this board.
  *
- * Walks releases newest first and stops at the first one that says anything
- * definite about this board. A newer release that skipped the board must not
- * hide an older one that supports it — a project adding a second board does
- * not drop the first — so the walk continues past a release with nothing for
- * this chip at all.
+ * Only the fields the chooser and the writer need; the registry carries more.
+ */
+function toBuild(
+  project: CatalogueProject,
+  release: CatalogueRelease,
+  board: CatalogueBoard,
+  b: CatalogueBuild,
+): FlashBuild {
+  return {
+    projectId: project.id,
+    projectName: project.name,
+    version: release.version,
+    target: board.target as Target,
+    mergedUrl: b.mergedUrl as string,
+    mergedWebUrl: b.mergedWebUrl,
+    mergedBytes: b.mergedBytes,
+    boardId: b.boardId,
+    unsigned: b.unsigned,
+    channel: release.channel,
+    boardName: board.name,
+    summary: project.summary,
+    repo: project.repo,
+    notesUrl: release.notesUrl,
+    official: project.official,
+  };
+}
+
+/**
+ * How many of each channel to offer for one board.
+ *
+ * Three stable is enough to roll back past a bad release without turning the
+ * list into a changelog -- the releases themselves remain the archive. Betas
+ * are capped separately and only counted when they are NEWER than the newest
+ * stable: an old prerelease that a stable release has already superseded is
+ * noise, not a choice.
+ */
+const KEEP_STABLE = 3;
+const KEEP_BETA = 2;
+
+/**
+ * How this project stands for this board, and every version it can install.
+ *
+ * Walks every release rather than stopping at the newest, because "the latest"
+ * is not the only thing someone needs: a release can regress, and rolling back
+ * is the first thing an owner reaches for. A project that ships a prerelease
+ * channel is also worth offering to anyone who wants to test one -- labelled,
+ * and never as the default.
+ *
+ * The state still comes from the newest release that says anything definite,
+ * so `ambiguous` and `ota-only` keep their meaning: they describe why the
+ * newest thing cannot be installed, which is what someone needs to read.
  */
 function offerFor(
   project: CatalogueProject,
@@ -148,6 +214,12 @@ function offerFor(
     deprecated: project.deprecated,
   };
 
+  const found: FlashBuild[] = [];
+  /* The first definite-but-unusable answer, which is what the state reports.
+   * Recorded once: a newer release explaining itself matters, an older one
+   * repeating the same explanation does not. */
+  let blocked: { state: OfferState; reason: string } | undefined;
+
   for (const release of releasesNewestFirst(project)) {
     const onTarget = release.builds.filter((b) => b.target === board.target);
     if (onTarget.length === 0) continue;
@@ -157,67 +229,30 @@ function offerFor(
     const named = onTarget.find((b) => b.boardId === board.id);
     if (named !== undefined) {
       if (named.mergedUrl !== undefined) {
-        return {
-          ...base,
-          state: "flashable",
-          build: {
-            projectId: project.id,
-            projectName: project.name,
-            version: release.version,
-            target: board.target as Target,
-            mergedUrl: named.mergedUrl,
-            mergedWebUrl: named.mergedWebUrl,
-            mergedBytes: named.mergedBytes,
-            boardId: named.boardId,
-            unsigned: named.unsigned,
-            boardName: board.name,
-            summary: project.summary,
-            repo: project.repo,
-            notesUrl: release.notesUrl,
-            official: project.official,
-          },
+        found.push(toBuild(project, release, board, named));
+      } else if (blocked === undefined) {
+        blocked = {
+          state: "ota-only",
+          reason:
+            `${release.version} ships only an over-the-air image for this ` +
+            `board. That cannot start a blank board — it has to be installed ` +
+            `from a device that is already running espOS.`,
         };
       }
-      return {
-        ...base,
-        state: "ota-only",
-        reason:
-          `${release.version} ships only an over-the-air image for this ` +
-          `board. That cannot start a blank board — it has to be installed ` +
-          `from a device that is already running espOS.`,
-      };
+      continue;
     }
 
     // A build that names no board is safe only where this chip has exactly one
     // board. Where several share it, one binary was built for one of them and
     // nothing in the release says which.
     const agnostic = onTarget.find((b) => b.boardId === undefined);
-    if (agnostic !== undefined) {
-      if (boardsOnTarget <= 1 && agnostic.mergedUrl !== undefined) {
-        return {
-          ...base,
-          state: "flashable",
-          build: {
-            projectId: project.id,
-            projectName: project.name,
-            version: release.version,
-            target: board.target as Target,
-            mergedUrl: agnostic.mergedUrl,
-            mergedWebUrl: agnostic.mergedWebUrl,
-            mergedBytes: agnostic.mergedBytes,
-            boardId: undefined,
-            unsigned: agnostic.unsigned,
-            boardName: board.name,
-            summary: project.summary,
-            repo: project.repo,
-            notesUrl: release.notesUrl,
-            official: project.official,
-          },
-        };
-      }
-      if (boardsOnTarget > 1) {
-        return {
-          ...base,
+    if (agnostic === undefined) continue;
+
+    if (boardsOnTarget <= 1 && agnostic.mergedUrl !== undefined) {
+      found.push(toBuild(project, release, board, agnostic));
+    } else if (boardsOnTarget > 1) {
+      if (blocked === undefined) {
+        blocked = {
           state: "ambiguous",
           reason:
             `${release.version} publishes one ${board.target} image that ` +
@@ -226,8 +261,8 @@ function offerFor(
             `usually leaves the screen black, so it is not offered here.`,
         };
       }
-      return {
-        ...base,
+    } else if (blocked === undefined) {
+      blocked = {
         state: "ota-only",
         reason:
           `${release.version} ships only an over-the-air image, which ` +
@@ -236,27 +271,57 @@ function offerFor(
     }
   }
 
+  if (found.length === 0) {
+    if (blocked !== undefined) {
+      return {
+        ...base,
+        state: blocked.state,
+        reason: blocked.reason,
+        builds: [],
+      };
+    }
+    return {
+      ...base,
+      state: "none",
+      builds: [],
+      reason:
+        (project.releases ?? []).length === 0
+          ? `${project.name} has not published any firmware yet.`
+          : `${project.name} supports this board but has published no build ` +
+            `for it.`,
+    };
+  }
+
+  /* Stable is the default, never a prerelease: someone who wants a beta can
+   * pick one, and nobody should be handed one by accident. This mirrors npm,
+   * where `latest` stays stable while a beta lives on its own tag. */
+  const stable = found.filter((b) => b.channel !== "beta");
+  const betas = found.filter((b) => b.channel === "beta");
+  const newestStable = stable[0];
+
+  /* A beta only earns a place while it is ahead of the newest stable. Once a
+   * stable release catches up, the prerelease it came from is history. */
+  const aheadOfStable =
+    newestStable === undefined
+      ? betas
+      : betas.filter(
+          (b) => compareVersions(b.version, newestStable.version) > 0,
+        );
+
+  const builds = [
+    ...aheadOfStable.slice(0, KEEP_BETA),
+    ...stable.slice(0, KEEP_STABLE),
+  ];
+  const preferred = newestStable ?? builds[0];
+
   return {
     ...base,
-    state: "none",
-    reason:
-      (project.releases ?? []).length === 0
-        ? `${project.name} has not published any firmware yet.`
-        : `${project.name} supports this board but has published no build ` +
-          `for it.`,
+    state: "flashable",
+    build: preferred,
+    builds,
   };
 }
 
-/**
- * Every board any project declares, each with what it can run.
- *
- * Boards are keyed by id across projects, because a board is a physical thing
- * and two projects supporting the same devkit is the normal case — a person
- * holding one C6 devkit should see one entry offering both, not the same board
- * twice. The first project to declare a board supplies its presentation: the
- * ids are the registry's own contract, so two entries sharing an id are the
- * same board, and a later project's wording for it is not more correct.
- */
 export function boardCatalogue(projects: CatalogueProject[]): BoardEntry[] {
   const byId = new Map<string, BoardEntry>();
 
