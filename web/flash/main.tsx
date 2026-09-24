@@ -464,29 +464,20 @@ function App() {
       ? catalogue
       : catalogue.filter((entry) => entry.target === chipFilter);
 
-  const flashable: FlashBuild[] = (projects ?? []).flatMap((project) =>
-    (project.releases ?? []).slice(0, 1).flatMap((release) =>
-      release.builds
-        .filter((b) => b.mergedUrl !== undefined)
-        .map((b) => ({
-          projectId: project.id,
-          projectName: project.name,
-          version: release.version,
-          target: b.target as Target,
-          mergedUrl: b.mergedUrl as string,
-          mergedBytes: b.mergedBytes,
-          boardId: b.boardId,
-          unsigned: b.unsigned,
-          // The board this image is FOR. Without it two variants of one
-          // release are indistinguishable, which is how this list came to
-          // show "P4 Cockpit 1.3.1 · esp32p4" twice.
-          boardName: (project.boards ?? []).find((x) => x.id === b.boardId)
-            ?.name,
-          summary: project.summary,
-          repo: project.repo,
-          notesUrl: release.notesUrl,
-          official: project.official,
-        })),
+  /* Derived from the same catalogue as the board-first view, not projected
+   * again from the registry. The hand-rolled copy this replaces had drifted in
+   * three fields -- it never carried mergedWebUrl, so picking anything here
+   * failed as "no browser-readable copy" even for a project that publishes a
+   * mirror, and it carried neither the channel nor the espOS version, so betas
+   * were unlabelled and the runtime line never appeared. One source, so the two
+   * views cannot disagree about what a build is.
+   *
+   * One entry per (board, project): two board variants of one release are
+   * genuinely different images, which is what the flat list used to get wrong
+   * by showing the same row twice. */
+  const flashable: FlashBuild[] = catalogue.flatMap((entry) =>
+    entry.offers.flatMap((offer) =>
+      offer.build === undefined ? [] : [offer.build],
     ),
   );
 
@@ -820,6 +811,14 @@ function App() {
                           {candidate.official === true && (
                             <span class="pill ok">official</span>
                           )}
+                          {candidate.channel === "beta" && (
+                            <span
+                              class="pill warn"
+                              title="A prerelease. Offered for testing; expect it to be less tried than the stable release."
+                            >
+                              beta
+                            </span>
+                          )}
                           {candidate.unsigned === true && (
                             <span
                               class="pill warn"
@@ -845,6 +844,7 @@ function App() {
                             ` · ${mb(candidate.mergedBytes)}`}
                         </span>
                       </button>
+                      <EsposLine build={candidate} latest={esposLatest} />
                       <span class="flash-links">
                         {candidate.repo !== undefined && (
                           <a
