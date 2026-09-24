@@ -474,9 +474,7 @@ function App() {
    * were unlabelled and the runtime line never appeared. One source, so the two
    * views cannot disagree about what a build is.
    *
-   * One entry per (board, project): two board variants of one release are
-   * genuinely different images, which is what the flat list used to get wrong
-   * by showing the same row twice. */
+   */
   /* Every offered version, including projects the board-first view cannot place
    * because they declare no boards. One implementation in the catalogue, so the
    * two views cannot disagree about what a build is -- only about which ones
@@ -803,7 +801,7 @@ function App() {
                 <ul class="projects">
                   {flashable.map((candidate) => (
                     <li
-                      key={`${candidate.projectId}-${candidate.target}-${
+                      key={`${candidate.projectId}-${candidate.version}-${candidate.target}-${
                         candidate.boardId ?? "any"
                       }`}
                       class="flash-choice"

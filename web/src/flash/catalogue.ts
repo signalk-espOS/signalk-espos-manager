@@ -234,7 +234,11 @@ function toBuild(
     unsigned: b.unsigned,
     channel: release.channel,
     espos: release.espos,
-    boardName: board.name,
+    /* Empty means "no board to name" -- allBuilds() passes a placeholder board
+     * for a project that declares none. undefined, not "", so the page's
+     * "any <chip> board" fallback fires: a `??` slips past an empty string and
+     * renders a blank where the board name goes. */
+    boardName: board.name === "" ? undefined : board.name,
     summary: project.summary,
     repo: project.repo,
     notesUrl: release.notesUrl,
