@@ -11,6 +11,7 @@
 
 import { describe, expect, it } from "vitest";
 import {
+  allBuilds,
   boardCatalogue,
   targetsInCatalogue,
   type CatalogueProject,
@@ -697,5 +698,84 @@ describe("prerelease polarity", () => {
     const offer = boardCatalogue([chan(undefined, "1.0.0")])[0]?.offers[0];
     expect(offer?.state).toBe("flashable");
     expect(offer?.build?.version).toBe("1.0.0");
+  });
+});
+
+/**
+ * The firmware-first list.
+ *
+ * Derived from the same catalogue so the two views cannot disagree about what a
+ * build IS, but not a plain flatMap of it: `boards` is optional in the registry
+ * schema, and deriving purely from the board-first view made a project that
+ * declares none invisible in BOTH views.
+ */
+describe("allBuilds", () => {
+  it("includes a project that declares no boards", () => {
+    const boardless: CatalogueProject = {
+      id: "b",
+      name: "Boardless",
+      repo: "example/b",
+      releases: [
+        {
+          version: "1.0.0",
+          channel: "stable",
+          builds: [
+            { target: "esp32", mergedUrl: "https://example.invalid/x.bin" },
+          ],
+        },
+      ],
+    };
+    // The board-first view still cannot place it -- there is no board to file
+    // it under -- but it must not vanish from the firmware list as well.
+    expect(boardCatalogue([boardless])).toEqual([]);
+    const all = allBuilds([boardless]);
+    expect(all).toHaveLength(1);
+    expect(all[0]?.version).toBe("1.0.0");
+    expect(all[0]?.target).toBe("esp32");
+  });
+
+  it("lists every offered version, not just the default", () => {
+    const many: CatalogueProject = {
+      id: "m",
+      name: "M",
+      repo: "example/m",
+      boards: [{ id: "c6", target: "esp32c6", name: "C6" }],
+      releases: ["1.2.0", "1.1.0", "1.0.0"].map((v) => ({
+        version: v,
+        channel: "stable",
+        builds: [
+          {
+            target: "esp32c6",
+            boardId: "c6",
+            mergedUrl: `https://example.invalid/${v}.bin`,
+          },
+        ],
+      })),
+    };
+    // This view is for someone already after a particular release.
+    expect(allBuilds([many]).map((b) => b.version)).toEqual([
+      "1.2.0",
+      "1.1.0",
+      "1.0.0",
+    ]);
+  });
+
+  it("skips a build with no full-flash image", () => {
+    const otaOnly: CatalogueProject = {
+      id: "o",
+      name: "O",
+      repo: "example/o",
+      releases: [
+        {
+          version: "1.0.0",
+          channel: "stable",
+          builds: [
+            { target: "esp32", otaUrl: "https://example.invalid/ota.bin" },
+          ],
+        },
+      ],
+    };
+    // An OTA image cannot start a blank board, which is all this page does.
+    expect(allBuilds([otaOnly])).toEqual([]);
   });
 });

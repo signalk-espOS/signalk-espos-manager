@@ -15,6 +15,7 @@
 import { render } from "preact";
 import { useEffect, useMemo, useState } from "preact/hooks";
 import {
+  allBuilds,
   boardCatalogue,
   esposLag,
   isPrerelease,
@@ -182,7 +183,7 @@ function OtherVersions({
                 class="pill warn"
                 title="A prerelease. Offered for testing; expect it to be less tried than the stable release."
               >
-                beta
+                {b.channel ?? "prerelease"}
               </span>
             )}
             {b.unsigned === true && (
@@ -476,10 +477,13 @@ function App() {
    * One entry per (board, project): two board variants of one release are
    * genuinely different images, which is what the flat list used to get wrong
    * by showing the same row twice. */
-  const flashable: FlashBuild[] = catalogue.flatMap((entry) =>
-    entry.offers.flatMap((offer) =>
-      offer.build === undefined ? [] : [offer.build],
-    ),
+  /* Every offered version, including projects the board-first view cannot place
+   * because they declare no boards. One implementation in the catalogue, so the
+   * two views cannot disagree about what a build is -- only about which ones
+   * they show. */
+  const flashable: FlashBuild[] = useMemo(
+    () => allBuilds(projects ?? []),
+    [projects],
   );
 
   return (
@@ -724,7 +728,8 @@ function App() {
                                             class="pill warn"
                                             title="This project has published no stable release for this board yet, so the newest prerelease is what is offered."
                                           >
-                                            beta
+                                            {offer.build.channel ??
+                                              "prerelease"}
                                           </span>
                                         )}
                                         {offer.build.unsigned === true && (
@@ -817,7 +822,7 @@ function App() {
                               class="pill warn"
                               title="A prerelease. Offered for testing; expect it to be less tried than the stable release."
                             >
-                              beta
+                              {candidate.channel ?? "prerelease"}
                             </span>
                           )}
                           {candidate.unsigned === true && (

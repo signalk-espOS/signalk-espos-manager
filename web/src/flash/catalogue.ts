@@ -486,3 +486,44 @@ export function targetsInCatalogue(entries: BoardEntry[]): Target[] {
   for (const entry of entries) seen.add(entry.target);
   return [...seen].sort();
 }
+
+/**
+ * Every installable build, for the firmware-first view.
+ *
+ * Not `boardCatalogue(...).flatMap(...)`, for two reasons that only show up at
+ * the edges:
+ *
+ *   - `boards` is optional in the registry schema, so a project may declare
+ *     none. The board-first view cannot place such a project at all -- there is
+ *     no board to file it under -- and deriving this list from that one made it
+ *     invisible in BOTH views, which is worse than the duplicate row the
+ *     board-first view was built to remove.
+ *   - this view exists for someone who already knows what they want and is
+ *     after a particular release, so it lists every offered version rather than
+ *     just the default one.
+ *
+ * Still one implementation: it reuses `offerFor` through the catalogue for the
+ * placed case, so the two views cannot disagree about what a build IS. They
+ * differ only in which builds they show, which is the point of having two.
+ */
+export function allBuilds(projects: CatalogueProject[]): FlashBuild[] {
+  const out: FlashBuild[] = [];
+  for (const entry of boardCatalogue(projects)) {
+    for (const offer of entry.offers) out.push(...offer.builds);
+  }
+  /* Projects the board-first view could not place. A synthetic board name is
+   * deliberately NOT invented: the row says the chip, and the chooser's own
+   * checks still refuse a wrong-chip write. */
+  for (const project of projects) {
+    if ((project.boards ?? []).length > 0) continue;
+    for (const release of releasesNewestFirst(project)) {
+      for (const b of release.builds) {
+        if (b.mergedUrl === undefined) continue;
+        out.push(
+          toBuild(project, release, { id: "", target: b.target, name: "" }, b),
+        );
+      }
+    }
+  }
+  return out;
+}
