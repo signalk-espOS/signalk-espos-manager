@@ -1,0 +1,658 @@
+# CodeRabbit configuration for signalk-espOS/signalk-espos-manager.
+# Schema: https://coderabbit.ai/integrations/schema.v2.json
+# Validate locally with `coderabbit config validate`.
+#
+# The "ecosystem" and "conventions" sections of the catch-all instruction are
+# shared verbatim with signalk-espOS/espOS and signalk-espOS/registry. Edit
+# all three together.
+
+language: en-US
+tone_instructions: >-
+  Terse engineering register. Lead with the defect and the concrete failure it
+  causes for a device, a boat network or the person holding the board. No
+  praise, no restating the diff, no emoji.
+
+reviews:
+  profile: assertive
+  request_changes_workflow: false
+  review_details: true
+  in_progress_fortune: false
+  poem: false
+  suggested_reviewers: false
+  high_level_summary_instructions: |
+    Present tense, no "This PR". Say what changed and who sees it: the
+    fleet page, a device being updated, the hosted flasher, or the Signal K
+    data model. Name the contract point when one moves (device API,
+    registry index, OTA manifest).
+
+  # .github/release.yml groups auto-generated release notes by these labels.
+  labeling_instructions:
+    - label: bug
+      instructions: "A `fix:` change or anything correcting observed wrong behaviour."
+    - label: enhancement
+      instructions: "A `feat:` change or a new capability, page, setting or route."
+    - label: documentation
+      instructions: "Changes confined to README.md, test/**/README.md or doc comments."
+    - label: breaking
+      instructions: "A removed or renamed setting, REST route, Signal K path or public behaviour that an installed plugin relied on."
+    - label: firmware
+      instructions: "Changes that track a new espOS or registry contract (parsed keys, TXT keys, manifest limits, version comparator, flasher chip tables)."
+    - label: dependencies
+      instructions: "Bumps in package.json or package-lock.json, or the pinned reusable CI workflow."
+  auto_apply_labels: false
+
+  auto_review:
+    enabled: true
+    auto_incremental_review: true
+    drafts: false
+    ignore_title_keywords:
+      - "chore(release)"
+      - "[skip review]"
+    ignore_usernames:
+      - "github-actions[bot]"
+      - "dependabot[bot]"
+
+  # dist/ and public/ are gitignored build output (.gitignore is the guard
+  # against committing them). They are excluded here so a forced add does not
+  # flood the review; note that excluded paths are invisible to the review
+  # and to custom checks alike.
+  path_filters:
+    - "!package-lock.json"
+    - "!dist/**"
+    - "!public/**"
+    - "!node_modules/**"
+
+  path_instructions:
+    - path: "**/*"
+      instructions: |
+        ## Scope
+
+        Review the diff against `main` together with the code, tests and
+        the two repositories this plugin consumes, not the hunk in
+        isolation. There is no hardware-in-the-loop CI, and the README's
+        "Not proven yet" section is honest: no firmware has yet been
+        written to a board or installed over the air by this plugin in a
+        proven run. Weigh real-hardware risk accordingly, and flag a PR
+        that claims proven behaviour its body does not evidence (device,
+        firmware version, what was observed).
+
+        ## This repository
+
+        signalk-espos-manager is a Signal K server plugin (`src/`,
+        TypeScript ESM compiled by `tsc` into `dist/`) plus a Preact +
+        Zustand webapp built by Vite into `public/` (gitignored), which
+        the `signalk-webapp` keyword serves without auth at
+        `/signalk-espos-manager/`. Two Vite inputs: the plugin UI
+        (`web/index.html`) and the standalone browser flasher
+        (`web/flash/index.html`), which `pages.yml` publishes to GitHub
+        Pages at signalk-espos.github.io/signalk-espos-manager/flash/ and
+        which fetches the registry directly. The plugin's REST API lives
+        under `/plugins/signalk-espos-manager/api/*` (admin-gated;
+        read-only routes use `router.access("readonly")` when the server
+        offers it) and it publishes `espos-manager.*` deltas. Tests are
+        Vitest (`test/**/*.test.ts`) over captured device payloads
+        (`test/fixtures/`) and a `node:http` fake device. CI is Signal
+        K's reusable `plugin-ci` workflow pinned to a SHA: Node 22 and 24,
+        `npm run ci-lint`, build, tests, then a live server integration
+        on 2.32.0 and latest with the packed tarball installed
+        `--ignore-scripts`. No npm publish workflow exists yet and the
+        version is bumped by hand.
+
+        ## The espOS ecosystem: three repositories, one contract chain
+
+        - **signalk-espOS/espOS** is the ESP-IDF 6 runtime a firmware project builds
+          on, pinned as the git submodule `espos/` at a release tag or pulled from the
+          IDF component registry (`signalk-espos/espos_*`). It owns everything a
+          device says to the network: the `_espos._tcp` mDNS advertisement (TXT
+          `id`, `v`, `app`, `espos`, `target`, `api`, and `auth`, which is
+          hard-coded to `0`), the HTTP API under `/api/v1/` (`system/ping` answers
+          `{app, version, auth}` without a key; `system/info`, `ota/*`, `config` and
+          the rest need `Authorization: Bearer <key>` or the `espos_sid` cookie),
+          pull-based signed OTA (`POST /ota {"url": ...}`; the device downloads and
+          accepts only an RSA-3072 signature from the key it was flashed with), the
+          OTA version manifest (`schema: 1`), and the reusable `build-firmware.yml`
+          workflow (`workflow_call`) that turns a consumer's tag into
+          `<name>-<tag>-merged.bin` and `<name>-<tag>-ota.bin` release assets, where
+          the caller's `name` input carries the target or board segment. espOS's own
+          releases carry no binaries: the `vX.Y.Z` tag and the component registry
+          are the deliverable.
+        - **signalk-espOS/registry** holds one `projects/<id>.json` per firmware
+          project, validated by `schema/project.schema.json`, and a generated and
+          committed `index.json` that resolves each project's GitHub releases into
+          per-board builds (`otaUrl`, `mergedUrl`, the CORS-readable `*WebUrl`
+          variants, the `espos` version each build pins) plus `esposLatest`. It is
+          read unauthenticated from raw.githubusercontent.com; `schema: 1` at the top
+          is the wire version.
+        - **signalk-espOS/signalk-espos-manager** is the Signal K server plugin. It
+          browses `_espos._tcp`, keys every device on TXT `id` (the last two bytes of
+          the base MAC in hex; no REST route exposes it), matches `app` plus
+          `hardware.board` (must equal `boards[].reportedAs` exactly) against the
+          registry, mirrors firmware under its unauthenticated webapp mount
+          (`/signalk-espos-manager/fw/<app>/`), points the device's `ota.manifest_*`
+          config at that mount, hands the device a LAN `url` to pull, and hosts a
+          browser flasher (GitHub Pages, esptool-js) that can only read
+          `mergedWebUrl` because GitHub release downloads carry no CORS header.
+        - Downstream firmware (dirkwa/espos-p4-cockpit, dirkwa/espos-ble-gateway)
+          pins espOS as a submodule, releases through `build-firmware.yml`, and is
+          what the registry lists.
+
+        ### Contract points
+
+        A change on one side of any of these must say, in the PR body, how the other
+        side keeps working, or name the companion PR. Flag one that does not.
+
+        1. mDNS TXT keys and the JSON shapes of `/api/v1/system/ping`,
+           `/system/info` (`hardware.board`, `hardware.mac`, `chip`, ...; the whole
+           `hardware` object is absent on firmware before 0.10), `/ota/status`
+           (`state`, `running.key_fp`, `running.pending_verify`, ...) and `/config`
+           (`ota.manifest_src`, `ota.manifest_path`): espOS emits, the manager
+           parses tolerantly but by exact key name. Firmware 0.7.x to 0.10.x
+           coexist on one boat, so fields are added, never renamed or repurposed.
+        2. `hardware.board` versus `boards[].reportedAs`: the firmware passes it as
+           `espos_start_opts_t.board`, the registry declares it, the manager
+           compares it exactly (trimmed, case-sensitive). A board name is a wire
+           string, not a label.
+        3. Release asset names versus the registry's `assets.ota` and
+           `assets.merged` regexes (named groups `version` and `board`):
+           `build-firmware.yml` emits them, the registry indexes one build per
+           board or nothing at all.
+        4. The registry entry schema versus the manager's `RegistryProject` type
+           (`src/registry/types.ts`) and the flasher catalogue: the schema states it
+           mirrors that type. Additive changes only; the parser drops what it does
+           not know.
+        5. The `index.json` shape (`schema`, `esposLatest`,
+           `projects[].releases[].builds[]`): the registry emits it, the plugin and
+           the hosted flasher consume it.
+        6. The OTA manifest `{schema: 1, app, builds[]}`, its byte limits (version
+           31, build url 255, notes 127, manifest url 167, manifest path 127, whole
+           manifest 16 KiB) and where it lives: the device fetches it with a bare
+           `esp_http_client` and no credentials, so it must sit on an
+           unauthenticated mount. espOS's OTA client defines the format, the
+           manager's `src/mirror/manifest.ts` obeys it.
+        7. Version ordering: espOS's `espos_ota_version_cmp` in C is the oracle;
+           the manager's `src/mirror/version.ts` is a byte-exact port with a fixture
+           generated from the C code. It is not semver.
+        8. Signing: a device accepts only images signed with the key it was flashed
+           with; `signingKeyId` in the registry names that key; changing a project's
+           key strands every fielded device unless `"signed": false` says so.
+        9. espOS tags `vX.Y.Z`: the registry resolves a firmware's submodule SHA to a
+           tag by exact match (never nearest-tag) and derives `esposLatest`; the
+           manager shows a build as "behind" from that.
+        10. The `build-firmware.yml` inputs (`target`, `name`, `require`,
+            `submodules`, `esptool`, `tag`, `artifact`), its `signing_key` secret
+            and `unsigned` output: every consumer firmware's release workflow calls
+            them by name.
+
+        ## Manager-specific rules
+
+        - Guessing is worse than declining. Never offer a build without a
+          known target; never offer a board-agnostic build when several
+          boards share the chip; match `reportedAs` exactly, never the
+          display name; treat an unknown signing-key fingerprint as
+          unknown; anything not `"stable"` is a prerelease and an absent
+          channel is stable. A "helpful fallback" in
+          `src/registry/resolve.ts` or `web/src/flash/catalogue.ts` is the
+          black-screen incident on a Touch-LCD-X happening again.
+        - Offline is a state, not an error. `start()` never throws (Signal
+          K neither awaits nor catches it); discovery and mDNS trouble is
+          `app.debug`, not a red plugin; `getIndex`, `probeDevice`,
+          `OtaJob.run` and `poller.cycle` return state instead of
+          throwing; every route handler wraps its async work so the
+          request always answers. All logging goes through `app.debug`;
+          no `console`.
+        - Device auth policy: one authenticated attempt per device per
+          poll cycle, no rotation through candidate keys, a 429 records
+          the lockout (`Retry-After` or 30 s), 401/403 marks `needs-key`
+          with no retry. The firmware's throttle (five bad keys in 60 s)
+          survives a key change. The API exposes `hasKey`, never the key;
+          `keys.json` is written with mode 0600.
+        - Parsers are tolerant: `unknown` in, narrowed out (`asRecord`,
+          `str`, `num`, `bool`); unknown fields dropped, missing fields
+          optional, because firmware 0.7.x to 0.10.x coexist. Never make
+          a recently added firmware field required, and never read the
+          espOS version from `/system/info` (only mDNS carries it).
+        - Durable state lives under `app.getDataDirPath()` only
+          (`keys.json`, `cache/`, `fw/`), written to `.tmp` or `.part`
+          and renamed; every registry-supplied string used as a path
+          segment passes `assertSafeSegment`; the only thing in `public/`
+          is the `fw` symlink and a real directory there is never deleted.
+        - URLs handed to a device use the server's LAN address chosen by
+          longest shared prefix with the device IP, never loopback; the
+          mount self-probe uses plain http on 127.0.0.1 even under https
+          (self-signed certificates) and its probe file is not a dotfile
+          (serve-static ignores dotfiles).
+        - OTA: one job per device, `maxConcurrent` 1 by default, the queue
+          pauses after any failed or rolled-back job until resumed,
+          rollbacks are never auto-retried, a running job is not
+          cancellable, `stop()` only pauses. A 409 on install adopts the
+          running update; during the reboot wait a ping still showing the
+          old version means "not rebooted yet"; a failed confirm ping
+          leaves the image pending for the device's own rollback timer.
+        - `src/mirror/version.ts` is a byte-exact port of espOS's C
+          comparator: no `<`, no `localeCompare`, no semver, UTF-8 byte
+          `strcmp` on suffixes; it imports nothing so the browser shares
+          it. A change means regenerating `test/fixtures/version-compare.json`
+          per `test/fixtures/regenerate-vercmp.md` from the C code.
+        - Manifest byte limits (version 31, url 255, notes 127, manifest
+          url 167, path 127, whole manifest 16 KiB) come from the
+          firmware; oldest builds are dropped first and the newest per
+          target and channel is never dropped; build URLs are
+          root-relative and the device resolves them against the
+          manifest's origin.
+        - TypeScript: `strict`, `noUncheckedIndexedAccess`,
+          `noImplicitOverride`; `no-explicit-any` is an ESLint error;
+          relative imports carry `.js` (nodenext), in `web/` too;
+          `types: ["node"]` stays in tsconfig. `@sinclair/typebox` 0.34
+          on purpose (it matches `@signalk/server-api`); `default: {}` on
+          every settings section and `Value.Default` are load-bearing.
+          Flag the unscoped `typebox` 1.x, `Value.Create`, or `any`.
+        - Runtime dependencies must be pure JS (the app store installs
+          with `--ignore-scripts`) and Apache-2.0 compatible; everything
+          browser-side is a devDependency bundled into `public/`.
+          `bonjour.destroy()` on stop or the socket leaks.
+        - Chain before pushing: `npm run format` (prettier, then eslint
+          --fix), `npm run build`, `npm test` (typecheck of src, test and
+          web, then vitest). `prettier --check` runs on Windows CI, which
+          is why `.gitattributes` forces LF. `.tsx` files are not
+          eslinted and `web/flash/main.tsx` sits outside
+          `web/tsconfig.json`; the reviewer is their linter and type
+          checker.
+        - PR bodies carry the updated test count and, for UI changes,
+          screenshots from the manual Playwright script
+          (`test/e2e/README.md`).
+
+        ## What NOT to flag
+
+        - `main` and `exports` both set in package.json: the Signal K
+          loader reads `main`.
+        - `schema: () => SettingsSchema as unknown as object`: TypeBox
+          emits plain JSON Schema.
+        - Routes outliving `stop()` behind the 503 guard: Express cannot
+          deregister them, so the service is created lazily.
+        - The manifest and firmware served from the unauthenticated webapp
+          mount `public/fw`, not under `/plugins/`: devices send no
+          credentials. Hence `emptyOutDir: false` in vite.config.ts and
+          `public/` in `.gitignore`.
+        - mDNS TXT `auth` ignored (espOS hard-codes it to 0; `/system/ping`
+          is the truth); the `down` event not subscribed; the poll timer
+          not `unref`'d; the `enrich()` then `systemInfo()` order in
+          `src/device/probe.ts`.
+        - `drain()` not awaiting `start()` and re-draining via
+          `queueMicrotask`; `KeyStore.load()` caching its in-flight promise.
+        - The web code importing `src/mirror/version.js` directly: one
+          comparator for server and browser.
+        - Prerelease polarity written as `channel !== "stable"`.
+        - esptool-js workarounds: `SPI_REG_BASE_FIXUP` for C5/C6 (a test
+          fails when upstream fixes it), the JEDEC `0x000000`/`0xffffff`
+          retry, `detectFlashSize()`'s 4 MB answer treated as a guess,
+          `chip.CHIP_NAME` over the description string, flash params
+          `"keep"` (anything else rewrites the header and invalidates a
+          signed image), image data as `Uint8Array`, `requestPort({})`
+          with no filters, `eraseAll: false`, and the test that reads
+          esptool-js source text instead of importing it (0.6.1 has
+          extensionless internal imports).
+        - The flasher existing twice (`web/src/pages/Flash.tsx` inside the
+          plugin, `web/flash/main.tsx` hosted) over the shared
+          `web/src/flash/*`; only the hosted page must use `mergedWebUrl`.
+        - `icon.svg` twice (root for `signalk.appIcon`, `static/` for the
+          favicon).
+        - The reusable CI workflow pinned to a SHA; armv7 disabled.
+        - Provisional ids `addr:<ip>:<port>` for hosts without an mDNS id.
+        - Release notes reduced to one line for the 127-byte device field.
+        - Settings declared but not yet read (`auth.autoProvision`,
+          `discovery.skDataModel`, `discovery.skDevices`,
+          `mirror.cacheMergedImages`, `mirror.keepVersions`) unless the PR
+          touches that area.
+
+        ## Conventions shared by every signalk-espOS repository
+
+        - Conventional Commits: `<type>(<scope>): <subject>`, imperative, lower-case
+          subject, no trailing period. Types in use: feat, fix, perf, refactor,
+          revert, docs, build, ci, test, chore. PRs are squash-merged, so the PR
+          title becomes the commit subject (and, in espOS, the release-notes line).
+          Flag a title that does not say what changed for whom.
+        - One logical change per PR. The house style is a long body that gives the
+          evidence: which device, which firmware version, what was observed. Flag a
+          body that says "tested" without saying what ran, and flag test plans with
+          unchecked checkboxes.
+        - No attribution trailers anywhere: no `Co-Authored-By`, no "Generated
+          with", no AI-tool mentions in commits, PR bodies, comments or code.
+        - No version bumps in feature or fix PRs. Versions move only in a dedicated
+          release PR.
+        - Comments say why, never what. Flag comments that restate the code,
+          narrate the bug they fixed, or cite a PR number instead of the reason.
+        - Documentation describes how things work now. Flag implementation-status
+          wording ("currently", "step 3", "TODO", progress markers) and snippets or
+          values that will drift from the code.
+        - Flag leftovers from earlier commits of the same PR: dangling imports,
+          comments naming symbols that no longer exist, superseded TODOs.
+        - Boat configuration is never committed: no SSIDs, passwords, device keys,
+          signing keys or LAN addresses, in source, defaults, fixtures or docs.
+          Firmware images are public release assets and `strings` prints every
+          literal.
+
+    - path: "src/{device,discovery}/**"
+      instructions: |
+        The device contract lives here and the truth is espOS's
+        `docs/rest-api.md` and `components/espos_net/src/mdns.c`. Routes:
+        `GET /system/ping` (public, `{app, version, auth?}`), `GET
+        /system/info` (`hardware{mac, ..., board?}` optional as a whole),
+        `GET /ota/status`, `POST /ota {url}`, `POST /ota/confirm`, `POST
+        /ota/rollback`, `GET/PUT /config`; `Authorization: Bearer`, JSON
+        bodies with `Content-Type: application/json` (415 otherwise),
+        error bodies `{error, path, message}`, `Retry-After` on 429, 8 s
+        timeout via AbortController, IPv6 bracketed. mDNS: type
+        `_espos._tcp`, TXT `id` (4 lower-case hex digits, the only
+        primary key), `v`, `app`, `espos`, `target`, `board` (read for
+        future firmware), `api`; only `up`, `txt-update` and
+        `srv-update` are handled; IPv4 only; a MAC/id mismatch warns and
+        never unifies. Identity merging (`merge.ts`) is pure and keyed on
+        the short id; addresses union across interfaces with the last
+        responder promoted. Flag any new parsed key that is not in the
+        espOS docs or a captured fixture, any required field, any second
+        authenticated attempt in one cycle, and any code that reads the
+        espOS version from `/system/info`.
+
+    - path: "src/registry/**"
+      instructions: |
+        The index contract, mirrored from `signalk-espOS/registry`
+        (`schema/project.schema.json`, `scripts/reindex.mjs`). `parseIndex`
+        requires `projects[]` and, per project, `id`, `app`, `targets`;
+        everything else is optional and unknown fields pass through.
+        `matchDevice`: project by exact `app`; `deprecated` means no offer
+        with the string as reason; channel filter with `includePrerelease`
+        admitting `beta`; newest first by `compareVersions`; `target`
+        undefined means no offer; a build with `boardId` must equal the
+        resolved board, a build without `boardId` is used only when the
+        project declares at most one board on that target, otherwise
+        `requiresUsb`; `reportedAs` exact, trimmed, case-sensitive, and
+        duplicate claims give undefined; `requiresUsb` on a key
+        fingerprint mismatch or `build.unsigned`; `needsConfirmation` for
+        git-describe running versions. `mergeIndexes`: first index wins
+        on `id`, a second `app` claim is dropped with a warning. The
+        client fetches with ETag, caches on disk, serves stale with a
+        reason, and never throws. A type change here is a registry schema
+        change: name the registry PR or say why none is needed.
+
+    - path: "src/mirror/**"
+      instructions: |
+        `manifest.ts` writes the espOS schema-1 manifest under the
+        firmware's byte limits (version 31, build url 255, notes 127,
+        manifest url 167, path 127, 16 KiB total; oldest builds dropped
+        first, newest per target and channel never), strips a leading
+        `v`, emits root-relative URLs, and reduces release notes to one
+        prose line. `version.ts` is the byte-exact C port and imports
+        nothing; any edit needs the fixture regenerated from C
+        (`test/fixtures/regenerate-vercmp.md`). `store.ts`: every segment
+        of `<dataDir>/fw/<app>/<version>/<file>` passes
+        `/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/`, downloads stream to
+        `.part` and rename, `otaSha256` mismatch discards, the cache
+        budget is checked against `expectedBytes` before downloading, no
+        resume by design. `publish.ts`: `public/fw` is a symlink to the
+        data dir recreated on start, never a copied tree, and a real
+        directory there is left alone. No signature verification happens
+        here, the device does it; do not suggest adding one that would
+        imply the plugin trusts what the device would reject.
+
+    - path: "src/ota/**"
+      instructions: |
+        `job.ts` is the per-device state machine (install, watch, reboot,
+        verify, confirm). Invariants: the URL POSTed is the mirror path
+        made absolute with the server's LAN address, or the upstream
+        `otaUrl` as a fallback that needs internet; `/ota/status` is
+        polled every 2 s until `installTimeoutS`; `failed` uses
+        `last_error`, `ready` means rebooting, `idle` with no progress
+        seen means "did not start", a fetch error during watch means
+        rebooting; a 409 adopts the running update; during the reboot
+        wait a ping still showing `fromVersion` means not yet rebooted;
+        `rolled_back` is terminal and never retried; confirm waits
+        `confirmGraceS` (default 120 s), pings, then POSTs `/ota/confirm`,
+        and a failed ping leaves the device's own rollback timer in
+        charge. `orchestrator.ts`: `maxConcurrent` default 1, pause after
+        any failure, one job per device ever, `drain()` re-drains via
+        `queueMicrotask`. `configure.ts`: writes `ota.manifest_src =
+        "signalk"` and `manifest_path` under the webapp mount, reads it
+        back and compares; `needsOtaRepair` covers url mode with an empty
+        URL, any path under `/plugins/`, or a wrong path. Flag any change
+        that makes a job retry a rollback, cancel mid-flash, or drop the
+        pause-after-failure.
+
+    - path: "{src/*.ts,src/api/**,src/fleet/**}"
+      instructions: |
+        `index.ts` is the plugin factory: `start`, `stop`, `schema`,
+        `registerWithRouter`; the service is created lazily and `start()`
+        wraps a `void` promise in try/catch because the server neither
+        awaits nor catches it. `config.ts` is the TypeBox 0.34 settings
+        schema with `default: {}` per section and `applyDefaults`
+        resetting a whole invalid section; `PLUGIN_ID`, `PUBLIC_BASE`,
+        `PUBLIC_FW_BASE` and `DEFAULT_REGISTRY_INDEX` are the wire
+        constants. `service.ts` owns fleet, key store, registry, mirror
+        and orchestrator, the mount probe, `localAddressFor` and
+        `startUpdate` (refuses a downgrade from a git-describe build
+        unless `confirmDowngrade: true`). `api/routes.ts`: every route is
+        behind the 503 not-running guard, read-only GETs use
+        `router.access("readonly")` when available, the key is never
+        returned, async work is wrapped so the request answers.
+        `fleet/poller.ts`: self-scheduling `setTimeout` with ±10 % jitter,
+        first cycle after 3 s, at most four unresolved hosts per cycle,
+        provisional ids for static hosts dropped once a real id claims the
+        address; `fleet/deltas.ts` publishes `espos-manager.<id>.*` and the
+        two counters. `app.config.settings.port` is read through an
+        unsafe cast on purpose.
+
+    - path: "web/**"
+      instructions: |
+        Preact 10 + Zustand 5, Vite 8, `root: "web"`, `base:
+        "/signalk-espos-manager/"`, `outDir: "../public"` with
+        `emptyOutDir: false` (the `fw` symlink lives there), two inputs
+        (plugin UI and hosted flasher). Not Module Federation, not an
+        embeddable component. Imports carry `.js`; `jsxImportSource:
+        "preact"`; `web/flash/main.tsx` is outside the tsconfig include
+        and `.tsx` is not eslinted, so review types and lint by hand.
+        Boats are plain http on a LAN: Web Serial needs a secure context,
+        so the in-plugin flasher detects that and links to the hosted
+        https copy; no other secure-context-only API without a fallback.
+        The bundle is kept small because boats are on marina LTE. Flasher
+        rules: `requestPort({})` without filters, flash params `"keep"`,
+        `Uint8Array` data, `eraseAll: false`, `chip.CHIP_NAME`, the C5/C6
+        register fixup, the JEDEC retry, the 4 MB guess; the hosted page
+        reads only `mergedWebUrl`, `esposLatest` and `release.espos`; the
+        wrong-chip gate fires before anything downloads; users are told to
+        power-cycle after writing. Store holds page and selection state
+        that survives remounts; the live ESPLoader stays in a module-level
+        ref; pure logic stays in `web/src/flash/*.ts`, `deviceUrl.ts` and
+        `catalogue.ts` so it is testable. Every 401/403 renders the login
+        prompt. A UI change ships screenshots from `test/e2e/webapp.mjs`.
+
+    - path: "test/**"
+      instructions: |
+        Vitest 4. `test/fixtures/*.json` are captured payloads from real
+        devices (.108, .118, .167 at specific firmware versions) and
+        `version-compare.json` is generated from the espOS C code: never
+        hand-edit, never "simplify", and treat a change as a provenance
+        question (which device, which firmware, or which C revision).
+        `helpers/fakeDevice.ts` is a real `node:http` server that must
+        reproduce the firmware's status codes, `Retry-After`, 415 on a
+        missing content type and the auth throttle, not an idealised
+        device. `chips-vs-library.test.ts` reads esptool-js source text on
+        purpose. `test/e2e/` is a manual Playwright script, excluded from
+        lint and format, run by hand before a UI change ships. A
+        behaviour change in `src/` or the pure flasher logic without a
+        test is incomplete; the PR body carries the new test count.
+
+    - path: ".github/workflows/**"
+      instructions: |
+        `ci.yml` calls `SignalK/signalk-server/.github/workflows/plugin-ci.yml`
+        pinned to a SHA (bump deliberately, with the version in a comment),
+        Node 22 and 24, `build-command: npm run build`,
+        `format-check-command: npm run ci-lint`, armv7 off, and the Signal
+        K integration job on 2.32.0 and latest that installs the packed
+        tarball `--ignore-scripts` and starts the plugin. `pages.yml`
+        deploys `public/*` plus a root redirect to `./flash/` with
+        `pages: write` and `id-token: write`, on pushes to main touching
+        `web/**`, `vite.config.ts`, `package*.json`, `icon.svg` or itself.
+        A future npm publish workflow needs `repository.url` in
+        package.json to match this repo for provenance and npm 11 or Node
+        24 for OIDC trusted publishing; Node 22's npm 10 silently skips
+        OIDC. Permissions minimal; concurrency per ref, main per SHA.
+
+    - path: "{package.json,vite.config.ts,tsconfig*.json,eslint.config.js,.gitattributes,.prettierignore}"
+      instructions: |
+        `package.json`: `type: module`, `main` and `types` alongside
+        `exports` (the Signal K loader reads `main`), `files` limited to
+        `dist`, `public`, `icon.svg`, README and LICENSE, keywords
+        `signalk-node-server-plugin` and `signalk-webapp`, `signalk.appIcon`,
+        `engines.node >= 22`, runtime dependencies only `@sinclair/typebox`
+        and `bonjour-service`. `prepare` runs the build and must stay quiet
+        (`vite build --logLevel error`) because `npm pack` runs it and
+        chatty output corrupts `npm pack --json`. `vite.config.ts`:
+        `emptyOutDir: false` is load-bearing, `publicDir: "../static"`,
+        `assetsInlineLimit: 8192`. `eslint.config.js` lints `**/*.ts`
+        only; widening it to `.tsx` is welcome but must keep CI green.
+        `.gitattributes` forces LF for Windows CI. A version bump here
+        belongs in a release PR only.
+
+    - path: "README.md"
+      instructions: |
+        The README states what works and what has not been proven. A PR
+        that removes an item from "Not proven yet" must cite the run that
+        proved it (device, firmware, date). Installation and privacy
+        sections describe network use honestly: one unauthenticated fetch
+        of index.json, firmware mirrored on the server, devices pulling
+        from the LAN. Flag marketing tone and flag any claim the code
+        does not implement.
+
+  finishing_touches:
+    docstrings:
+      enabled: false
+    unit_tests:
+      enabled: true
+
+  pre_merge_checks:
+    docstrings:
+      mode: "off"
+    title:
+      mode: warning
+      requirements: >-
+        Conventional Commit: `<type>(<scope>): <subject>` with type in feat,
+        fix, perf, refactor, revert, docs, test, build, ci, chore; optional
+        scope such as flash, web, ota, registry, mirror, discovery, config,
+        ci; subject imperative, starting lower-case, no trailing period,
+        written for the person who reads release notes ("tell people to
+        power-cycle the board after writing"), not for the compiler.
+    description:
+      mode: warning
+    issue_assessment:
+      mode: warning
+    custom_checks:
+      - name: Version bump only in a release PR
+        mode: error
+        instructions: >-
+          Fail if the `version` field of package.json changes and the PR
+          title does not start with `chore(release)` or `chore: release`.
+          Pass otherwise.
+      - name: Contract change names its source
+        mode: warning
+        instructions: >-
+          Determine whether the PR adds, removes or renames a parsed key,
+          route path, TXT key, byte limit or matching rule in any of:
+          src/device/parse.ts, src/device/client.ts, src/discovery/mdns.ts,
+          src/registry/types.ts, src/registry/client.ts,
+          src/registry/resolve.ts, src/mirror/manifest.ts,
+          src/mirror/version.ts, src/ota/configure.ts,
+          web/src/flash/catalogue.ts. If it does, pass only when the PR body
+          cites where the other side defines it: an espOS file or docs page
+          (for example docs/rest-api.md or components/espos_ota), an espOS
+          version, a registry schema field or reindex.mjs, or a captured
+          fixture under test/fixtures. Fail when the body gives no source.
+          Pass when none of those files change in that way.
+      - name: Behaviour change carries tests
+        mode: warning
+        instructions: >-
+          If the PR changes any file under src/ or any of
+          web/src/flash/catalogue.ts, web/src/flash/preflight.ts,
+          web/src/flash/chips.ts, web/src/deviceUrl.ts, pass only when at
+          least one file under test/ is added or modified in the same PR, or
+          the PR body states in one sentence why no test applies. Changes
+          limited to comments, formatting, type-only edits or log text pass.
+          Fail otherwise.
+      - name: Version comparator fixture regenerated
+        mode: error
+        instructions: >-
+          If src/mirror/version.ts changes in any way other than comments or
+          formatting, pass only when test/fixtures/version-compare.json also
+          changes in this PR or the body states that the C oracle produces an
+          identical fixture and names the espOS commit checked. Fail
+          otherwise. Pass when version.ts is untouched.
+
+  tools:
+    # eslint (repo config) plus prettier are the authoritative linters;
+    # Biome and Oxlint would run with their own defaults on the same files
+    # and disagree.
+    biome:
+      enabled: false
+    oxc:
+      enabled: false
+    languagetool:
+      enabled: false
+
+chat:
+  art: false
+  auto_reply: true
+
+knowledge_base:
+  web_search:
+    enabled: true
+  code_guidelines:
+    enabled: true
+    filePatterns:
+      # Local provenance notes that govern specific modules.
+      - files: "test/fixtures/regenerate-vercmp.md"
+        applyTo: "src/mirror/version.ts,src/mirror/manifest.ts,test/**"
+      - files: "test/fixtures/device-parser-verification.md"
+        applyTo: "src/device/**,src/discovery/**,test/**"
+      - files: "test/e2e/README.md"
+        applyTo: "web/**"
+      # Cross-repo (same organization): the contracts this plugin consumes,
+      # read from each repository's default branch at review time.
+      - files: "espOS:docs/rest-api.md"
+        applyTo: "src/device/**,src/ota/**,src/api/**,test/helpers/**"
+      - files: "espOS:docs/ota.md"
+        applyTo: "src/mirror/**,src/ota/**,src/registry/**"
+      - files: "espOS:docs/net.md"
+        applyTo: "src/discovery/**,src/fleet/**"
+      - files: "registry:schema/project.schema.json,registry:README.md"
+        applyTo: "src/registry/**,web/src/flash/**,web/flash/**"
+  learnings:
+    scope: global
+  issues:
+    scope: global
+  pull_requests:
+    scope: global
+  automatic_linking_mode: auto
+  linked_repositories:
+    - repository: signalk-espOS/espOS
+      instructions: >-
+        The firmware runtime the devices run. docs/rest-api.md is the HTTP
+        contract; components/espos_net/src/mdns.c defines the _espos._tcp
+        TXT keys and the short id; components/espos_httpd/src/api_system.c
+        builds /system/ping and /system/info; components/espos_ota holds the
+        manifest parser (manifest.c), espos_ota_version_cmp, the OTA state
+        machine and config/ota.json defaults; docs/ota.md explains signing
+        and rollback. Check every parsed key, route, status code, limit and
+        timing assumption in this plugin against those files.
+    - repository: signalk-espOS/registry
+      instructions: >-
+        Source of index.json. schema/project.schema.json mirrors
+        src/registry/types.ts; scripts/reindex.mjs decides which fields,
+        URL variants (otaUrl, mergedUrl, otaWebUrl, mergedWebUrl), release
+        fields (channel, espos) and root fields (esposLatest) exist;
+        README.md states the matching rules (app, reportedAs, one build per
+        board). Check the parser, the matcher and the flasher catalogue
+        against them.
+    - repository: dirkwa/espos-p4-cockpit
+      instructions: >-
+        A registered firmware with two boards on one chip (the case that
+        forces board-exact matching). Its release asset names and the
+        hardware.board strings it passes to espos_start are what the
+        matcher and the flasher see.
