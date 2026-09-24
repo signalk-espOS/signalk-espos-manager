@@ -15,6 +15,7 @@ import {
   targetsInCatalogue,
   type CatalogueProject,
   esposLag,
+  isPrerelease,
 } from "../web/src/flash/catalogue.js";
 
 /** The cockpit: two P4 panels, per-board builds, plus an older agnostic one. */
@@ -610,5 +611,91 @@ describe("espOS runtime version", () => {
     expect(esposLag(undefined, "0.10.3")).toBe("unknown");
     expect(esposLag("0.10.2", undefined)).toBe("unknown");
     expect(esposLag(undefined, undefined)).toBe("unknown");
+  });
+});
+
+/**
+ * An unknown channel must not become the default install.
+ *
+ * The registry emits exactly "stable" and "beta" today, but a release's channel
+ * is generated rather than schema-checked. A `!== "beta"` test would make a
+ * future "rc" the default rather than an opt-in, which hands someone a
+ * prerelease they never asked for.
+ */
+describe("prerelease polarity", () => {
+  const chan = (c: string | undefined, v: string): CatalogueProject => ({
+    id: "c",
+    name: "C",
+    repo: "example/c",
+    boards: [{ id: "c6", target: "esp32c6", name: "C6" }],
+    releases: [
+      {
+        version: v,
+        channel: c as string,
+        builds: [
+          {
+            target: "esp32c6",
+            boardId: "c6",
+            mergedUrl: `https://example.invalid/${v}.bin`,
+          },
+        ],
+      },
+    ],
+  });
+
+  it("treats an unrecognised channel as a prerelease", () => {
+    expect(isPrerelease({ channel: "rc" })).toBe(true);
+    expect(isPrerelease({ channel: "alpha" })).toBe(true);
+    expect(isPrerelease({ channel: "beta" })).toBe(true);
+  });
+
+  it("treats stable and an absent channel as stable", () => {
+    // Absent must stay stable, or an index that omits the field would have
+    // every build treated as a prerelease and none offered by default.
+    expect(isPrerelease({ channel: "stable" })).toBe(false);
+    expect(isPrerelease({})).toBe(false);
+  });
+
+  it("does not default-install an rc when a stable exists", () => {
+    const p: CatalogueProject = {
+      id: "m",
+      name: "M",
+      repo: "example/m",
+      boards: [{ id: "c6", target: "esp32c6", name: "C6" }],
+      releases: [
+        {
+          version: "2.0.0",
+          channel: "rc",
+          builds: [
+            {
+              target: "esp32c6",
+              boardId: "c6",
+              mergedUrl: "https://example.invalid/rc.bin",
+            },
+          ],
+        },
+        {
+          version: "1.0.0",
+          channel: "stable",
+          builds: [
+            {
+              target: "esp32c6",
+              boardId: "c6",
+              mergedUrl: "https://example.invalid/s.bin",
+            },
+          ],
+        },
+      ],
+    };
+    const offer = boardCatalogue([p])[0]?.offers[0];
+    expect(offer?.build?.version).toBe("1.0.0");
+    // Still offered for anyone who wants it, and listed first.
+    expect(offer?.builds[0]?.version).toBe("2.0.0");
+  });
+
+  it("still offers a build whose channel is absent", () => {
+    const offer = boardCatalogue([chan(undefined, "1.0.0")])[0]?.offers[0];
+    expect(offer?.state).toBe("flashable");
+    expect(offer?.build?.version).toBe("1.0.0");
   });
 });

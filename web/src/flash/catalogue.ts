@@ -97,6 +97,23 @@ export interface CatalogueProject {
 }
 
 /**
+ * Is this build a prerelease?
+ *
+ * Anything that is not "stable", rather than only "beta". The polarity matters:
+ * today the registry emits exactly those two values, but a release's `channel`
+ * is generated rather than schema-checked, and a `!== "beta"` test would make a
+ * future "rc" the DEFAULT install rather than an opt-in. Wrong in this direction
+ * hides a channel nobody publishes yet; wrong in the other hands someone a
+ * prerelease they never asked for.
+ *
+ * An ABSENT channel is stable, so an index that omits the field keeps working
+ * rather than treating every build as a prerelease.
+ */
+export function isPrerelease(build: { channel?: string }): boolean {
+  return build.channel !== undefined && build.channel !== "stable";
+}
+
+/**
  * How a build's espOS runtime compares to the newest released one.
  *
  * Worth surfacing because a fix can land in the runtime rather than the
@@ -351,8 +368,17 @@ function offerFor(
   /* Stable is the default, never a prerelease: someone who wants a beta can
    * pick one, and nobody should be handed one by accident. This mirrors npm,
    * where `latest` stays stable while a beta lives on its own tag. */
-  const stable = found.filter((b) => b.channel !== "beta");
-  const betas = found.filter((b) => b.channel === "beta");
+  /* Anything that is not "stable" is a prerelease, rather than only "beta".
+   * The polarity matters: today the registry emits exactly those two values, but
+   * `channel` on a release is generated rather than schema-checked, and a
+   * `!== "beta"` test would make a future "rc" the DEFAULT install rather than
+   * an opt-in. Wrong in that direction hands someone a prerelease they never
+   * asked for; wrong in the other only hides a channel nobody publishes yet.
+   *
+   * An ABSENT channel stays stable, so an index that omits the field keeps
+   * working instead of having every build treated as a prerelease. */
+  const stable = found.filter((b) => !isPrerelease(b));
+  const betas = found.filter(isPrerelease);
   const newestStable = stable[0];
 
   /* A beta only earns a place while it is ahead of the newest stable. Once a

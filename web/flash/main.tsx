@@ -17,6 +17,7 @@ import { useEffect, useMemo, useState } from "preact/hooks";
 import {
   boardCatalogue,
   esposLag,
+  isPrerelease,
   targetsInCatalogue,
   type BoardEntry,
   type BoardOffer,
@@ -176,7 +177,7 @@ function OtherVersions({
             <button disabled={busy} onClick={() => onPick(b)}>
               {b.version}
             </button>
-            {b.channel === "beta" && (
+            {isPrerelease(b) && (
               <span
                 class="pill warn"
                 title="A prerelease. Offered for testing; expect it to be less tried than the stable release."
@@ -718,7 +719,7 @@ function App() {
                                         {offer.official === true && (
                                           <span class="pill ok">official</span>
                                         )}
-                                        {offer.build.channel === "beta" && (
+                                        {isPrerelease(offer.build) && (
                                           <span
                                             class="pill warn"
                                             title="This project has published no stable release for this board yet, so the newest prerelease is what is offered."
@@ -811,7 +812,7 @@ function App() {
                           {candidate.official === true && (
                             <span class="pill ok">official</span>
                           )}
-                          {candidate.channel === "beta" && (
+                          {isPrerelease(candidate) && (
                             <span
                               class="pill warn"
                               title="A prerelease. Offered for testing; expect it to be less tried than the stable release."
