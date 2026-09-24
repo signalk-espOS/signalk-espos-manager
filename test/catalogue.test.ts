@@ -468,7 +468,9 @@ describe("version choices", () => {
 
   it("orders versions the way the device does, not lexically", () => {
     const offer = boardCatalogue([
-      withVersions([{ v: "1.10.0" }, { v: "1.9.0" }, { v: "1.2.0" }]),
+      // Deliberately NOT in order: if the chooser merely preserved input order
+      // this test would pass for the wrong reason.
+      withVersions([{ v: "1.9.0" }, { v: "1.2.0" }, { v: "1.10.0" }]),
     ])[0]?.offers[0];
 
     // Lexically "1.10.0" < "1.9.0"; the device compares the numeric core, and
@@ -485,9 +487,12 @@ describe("version choices", () => {
     }
   });
 
-  it("still reports why the NEWEST release cannot be installed", () => {
-    // An older release being fine must not hide the newest one being ambiguous:
-    // the reason describes what someone just tried to install.
+  it("says when a newer release exists but cannot be installed here", () => {
+    // An older release being installable must not hide the newest one being
+    // unidentifiable: without a word on screen the page looks stale to anyone
+    // who knows a newer version shipped. An earlier version of this test
+    // asserted the reason was dropped, which codified the gap instead of
+    // questioning it.
     const mixed: CatalogueProject = {
       ...cockpit,
       releases: [
@@ -508,7 +513,49 @@ describe("version choices", () => {
     // 1.3.1 names the board, so there IS something installable.
     expect(offer?.state).toBe("flashable");
     expect(offer?.builds.map((b) => b.version)).toEqual(["1.3.1"]);
-    // And 2.0.0 is absent, because it cannot be tied to a board.
+    // 2.0.0 is not offered, because it cannot be tied to a board...
     expect(offer?.builds.map((b) => b.version)).not.toContain("2.0.0");
+    // ...but the page is told why, naming the version being held back.
+    expect(offer?.note).toBeDefined();
+    expect(offer?.note).toContain("2.0.0");
+    expect(offer?.note).toContain("black");
+  });
+
+  it("does not add a note when the unusable release is OLDER", () => {
+    // Only a newer release is worth mentioning. An old OTA-only build being
+    // skipped is routine and explaining it every time would be noise.
+    const oldOtaOnly: CatalogueProject = {
+      id: "old",
+      name: "Old",
+      repo: "example/old",
+      boards: [{ id: "c6", target: "esp32c6", name: "C6" }],
+      releases: [
+        {
+          version: "2.0.0",
+          channel: "stable",
+          builds: [
+            {
+              target: "esp32c6",
+              boardId: "c6",
+              mergedUrl: "https://example.invalid/2.bin",
+            },
+          ],
+        },
+        {
+          version: "1.0.0",
+          channel: "stable",
+          builds: [
+            {
+              target: "esp32c6",
+              boardId: "c6",
+              otaUrl: "https://example.invalid/1-ota.bin",
+            },
+          ],
+        },
+      ],
+    };
+    const offer = boardCatalogue([oldOtaOnly])[0]?.offers[0];
+    expect(offer?.build?.version).toBe("2.0.0");
+    expect(offer?.note).toBeUndefined();
   });
 });

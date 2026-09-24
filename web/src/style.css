@@ -520,3 +520,10 @@ code {
 .other-versions li > button {
   padding: 2px 10px;
 }
+
+/* Why a newer release is not on offer. Shown under the install button, because
+   without it the page looks stale to someone who knows what shipped. */
+.offer-note {
+  display: block;
+  padding: 2px 12px 0;
+}

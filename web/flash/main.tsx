@@ -713,6 +713,11 @@ function App() {
                                         {mb(offer.build.mergedBytes)}
                                       </span>
                                     </button>
+                                    {offer.note !== undefined && (
+                                      <span class="muted small offer-note">
+                                        {offer.note}
+                                      </span>
+                                    )}
                                     <OtherVersions
                                       offer={offer}
                                       busy={busy}

@@ -104,6 +104,16 @@ export interface BoardOffer {
   /** Why, in a sentence, for every state except `flashable`. */
   reason?: string;
   /**
+   * Set when a release NEWER than anything offered here exists but cannot be
+   * installed on this board -- an image that does not say which board it is
+   * for, or one that ships no full-flash build.
+   *
+   * Without this the page silently offers an older version and looks stale to
+   * anyone who knows a newer release shipped. The state stays `flashable`,
+   * because something IS installable; this says what is being held back.
+   */
+  note?: string;
+  /**
    * The version a click installs: the newest STABLE one, or the newest beta
    * only when there is no stable at all. Present exactly when
    * `state === "flashable"`.
@@ -134,15 +144,23 @@ export interface BoardEntry {
 }
 
 /**
- * Newest release first.
+ * Newest release first, by the device's own ordering rules.
  *
- * Deliberately not a version comparison: the registry's CI emits releases in
- * order, and a full semver comparator here would be a second, divergent copy
- * of the one the server already has (`src/mirror/manifest.ts`). Order is the
- * registry's job; this module's job is not to reorder it.
+ * This used to trust the order the registry emitted, on the grounds that its CI
+ * writes releases newest-first and that a comparator here would be a second,
+ * divergent copy of the server's. The first half held only by luck -- it depends
+ * on what the GitHub releases API happens to return -- and the second stopped
+ * applying once this module began sharing the server's own comparator rather
+ * than reimplementing it.
+ *
+ * Sorting explicitly matters because the mistake is invisible: lexically
+ * "1.10.0" sorts below "1.9.0", so an unsorted list silently offers the wrong
+ * "newest" and nothing on screen looks wrong.
  */
 function releasesNewestFirst(project: CatalogueProject): CatalogueRelease[] {
-  return project.releases ?? [];
+  return [...(project.releases ?? [])].sort((a, b) =>
+    compareVersions(b.version, a.version),
+  );
 }
 
 /**
@@ -196,9 +214,11 @@ const KEEP_BETA = 2;
  * channel is also worth offering to anyone who wants to test one -- labelled,
  * and never as the default.
  *
- * The state still comes from the newest release that says anything definite,
- * so `ambiguous` and `ota-only` keep their meaning: they describe why the
- * newest thing cannot be installed, which is what someone needs to read.
+ * The state describes what can be installed. When nothing can, it carries the
+ * reason from the newest release that explained itself. When something can but
+ * a NEWER release cannot -- an unidentifiable image, or one with no full-flash
+ * build -- that explanation survives as `note`, because a page that quietly
+ * offers an older version looks broken to anyone who knows what shipped.
  */
 function offerFor(
   project: CatalogueProject,
@@ -218,7 +238,8 @@ function offerFor(
   /* The first definite-but-unusable answer, which is what the state reports.
    * Recorded once: a newer release explaining itself matters, an older one
    * repeating the same explanation does not. */
-  let blocked: { state: OfferState; reason: string } | undefined;
+  let blocked:
+    { state: OfferState; reason: string; version: string } | undefined;
 
   for (const release of releasesNewestFirst(project)) {
     const onTarget = release.builds.filter((b) => b.target === board.target);
@@ -233,6 +254,7 @@ function offerFor(
       } else if (blocked === undefined) {
         blocked = {
           state: "ota-only",
+          version: release.version,
           reason:
             `${release.version} ships only an over-the-air image for this ` +
             `board. That cannot start a blank board — it has to be installed ` +
@@ -254,6 +276,7 @@ function offerFor(
       if (blocked === undefined) {
         blocked = {
           state: "ambiguous",
+          version: release.version,
           reason:
             `${release.version} publishes one ${board.target} image that ` +
             `does not say which of this project's ${boardsOnTarget} ` +
@@ -264,6 +287,7 @@ function offerFor(
     } else if (blocked === undefined) {
       blocked = {
         state: "ota-only",
+        version: release.version,
         reason:
           `${release.version} ships only an over-the-air image, which ` +
           `cannot start a blank board.`,
@@ -314,11 +338,23 @@ function offerFor(
   ];
   const preferred = newestStable ?? builds[0];
 
+  /* A newer release that cannot be installed here is information, not noise.
+   * Dropping it made the page look stale to anyone who knew a newer version
+   * had shipped, with nothing on screen to explain the gap. */
+  const newest = builds[0];
+  const note =
+    blocked !== undefined &&
+    newest !== undefined &&
+    compareVersions(blocked.version, newest.version) > 0
+      ? blocked.reason
+      : undefined;
+
   return {
     ...base,
     state: "flashable",
     build: preferred,
     builds,
+    note,
   };
 }
 
