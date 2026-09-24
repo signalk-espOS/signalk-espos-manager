@@ -493,3 +493,37 @@ code {
 .next-steps li + li {
   margin-top: 6px;
 }
+
+/* Other versions, collapsed. Rolling back and testing a prerelease are both
+   real needs, but neither is the common one, so they do not get to make every
+   board row taller. */
+.other-versions {
+  padding: 2px 12px 0;
+}
+.other-versions summary {
+  cursor: pointer;
+  color: var(--muted, #8a94a6);
+}
+.other-versions ul {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.other-versions li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.other-versions li > button {
+  padding: 2px 10px;
+}
+
+/* Why a newer release is not on offer. Shown under the install button, because
+   without it the page looks stale to someone who knows what shipped. */
+.offer-note {
+  display: block;
+  padding: 2px 12px 0;
+}

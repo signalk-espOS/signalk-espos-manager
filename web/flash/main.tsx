@@ -114,6 +114,68 @@ function mb(bytes: number | undefined): string {
 }
 
 /**
+ * The versions other than the one the main button installs.
+ *
+ * Collapsed by default: the newest stable is what almost everyone wants, and a
+ * list of five versions on every row turns the page into a changelog. It is
+ * here at all because the two cases that need it are real -- rolling back past
+ * a release that broke something, and deliberately testing a prerelease -- and
+ * neither is served by a page that only ever offers the newest thing.
+ */
+function OtherVersions({
+  offer,
+  busy,
+  onPick,
+}: {
+  offer: BoardOffer;
+  busy: boolean;
+  onPick: (b: FlashBuild) => void;
+}) {
+  const others = offer.builds.filter((b) => b.version !== offer.build?.version);
+  if (others.length === 0) return null;
+  return (
+    <details class="other-versions small">
+      <summary>
+        {others.length === 1
+          ? "1 other version"
+          : `${others.length} other versions`}
+      </summary>
+      <ul>
+        {others.map((b) => (
+          <li key={b.version}>
+            <button disabled={busy} onClick={() => onPick(b)}>
+              {b.version}
+            </button>
+            {b.channel === "beta" && (
+              <span
+                class="pill warn"
+                title="A prerelease. Offered for testing; expect it to be less tried than the stable release."
+              >
+                beta
+              </span>
+            )}
+            {b.unsigned === true && (
+              <span class="pill warn" title="Built with a throwaway key.">
+                unsigned
+              </span>
+            )}
+            <span class="muted"> {mb(b.mergedBytes)}</span>
+            {b.notesUrl !== undefined && (
+              <>
+                {" "}
+                <a href={b.notesUrl} target="_blank" rel="noreferrer">
+                  notes
+                </a>
+              </>
+            )}
+          </li>
+        ))}
+      </ul>
+    </details>
+  );
+}
+
+/**
  * Where to read more about a project.
  *
  * Shown for a board that cannot be flashed as well as one that can: a project
@@ -625,6 +687,14 @@ function App() {
                                         {offer.official === true && (
                                           <span class="pill ok">official</span>
                                         )}
+                                        {offer.build.channel === "beta" && (
+                                          <span
+                                            class="pill warn"
+                                            title="This project has published no stable release for this board yet, so the newest prerelease is what is offered."
+                                          >
+                                            beta
+                                          </span>
+                                        )}
                                         {offer.build.unsigned === true && (
                                           <span
                                             class="pill warn"
@@ -643,6 +713,16 @@ function App() {
                                         {mb(offer.build.mergedBytes)}
                                       </span>
                                     </button>
+                                    {offer.note !== undefined && (
+                                      <span class="muted small offer-note">
+                                        {offer.note}
+                                      </span>
+                                    )}
+                                    <OtherVersions
+                                      offer={offer}
+                                      busy={busy}
+                                      onPick={(b) => void onPick(b)}
+                                    />
                                     <OfferLinks offer={offer} />
                                   </>
                                 ) : (

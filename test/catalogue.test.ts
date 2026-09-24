@@ -371,3 +371,191 @@ describe("browser-readable urls", () => {
     expect(build?.mergedWebUrl).toBeUndefined();
   });
 });
+
+/**
+ * More than one version per board.
+ *
+ * "The latest" is not the only thing someone needs. A release can regress and
+ * rolling back is the first thing an owner reaches for, and a project with a
+ * prerelease channel is worth offering to whoever wants to test one. The
+ * registry already carries every release; the chooser used to keep the newest
+ * and throw the rest away.
+ */
+describe("version choices", () => {
+  const withVersions = (
+    versions: { v: string; channel?: string }[],
+  ): CatalogueProject => ({
+    id: "many",
+    name: "Many",
+    repo: "example/many",
+    boards: [{ id: "c6", target: "esp32c6", name: "C6" }],
+    releases: versions.map(({ v, channel }) => ({
+      version: v,
+      channel: channel ?? "stable",
+      builds: [
+        {
+          target: "esp32c6",
+          boardId: "c6",
+          mergedUrl: `https://example.invalid/${v}.bin`,
+          mergedBytes: 1_000_000,
+        },
+      ],
+    })),
+  });
+
+  it("offers the newest three stable versions, newest first", () => {
+    const offer = boardCatalogue([
+      withVersions([
+        { v: "1.4.0" },
+        { v: "1.3.0" },
+        { v: "1.2.0" },
+        { v: "1.1.0" },
+        { v: "1.0.0" },
+      ]),
+    ])[0]?.offers[0];
+
+    expect(offer?.builds.map((b) => b.version)).toEqual([
+      "1.4.0",
+      "1.3.0",
+      "1.2.0",
+    ]);
+    // Three is enough to get past a bad release; the releases are the archive.
+    expect(offer?.builds).toHaveLength(3);
+  });
+
+  it("installs the newest STABLE by default, never a beta", () => {
+    const offer = boardCatalogue([
+      withVersions([
+        { v: "2.0.0-beta.1", channel: "beta" },
+        { v: "1.4.0" },
+        { v: "1.3.0" },
+      ]),
+    ])[0]?.offers[0];
+
+    // The beta is offered...
+    expect(offer?.builds.map((b) => b.version)).toContain("2.0.0-beta.1");
+    // ...listed first, because someone looking for one should not have to hunt.
+    expect(offer?.builds[0]?.version).toBe("2.0.0-beta.1");
+    // ...but a click installs the stable release. Nobody gets handed a
+    // prerelease by accident; this mirrors npm, where `latest` stays stable.
+    expect(offer?.build?.version).toBe("1.4.0");
+    expect(offer?.build?.channel).not.toBe("beta");
+  });
+
+  it("drops a beta that a stable release has already overtaken", () => {
+    const offer = boardCatalogue([
+      withVersions([
+        { v: "1.5.0" },
+        { v: "1.5.0-beta.1", channel: "beta" },
+        { v: "1.4.0" },
+      ]),
+    ])[0]?.offers[0];
+
+    // Once stable catches up, the prerelease it came from is history, not a
+    // choice. Offering it would invite installing something strictly older.
+    expect(offer?.builds.map((b) => b.version)).not.toContain("1.5.0-beta.1");
+    expect(offer?.build?.version).toBe("1.5.0");
+  });
+
+  it("falls back to a beta when a project has published no stable at all", () => {
+    const offer = boardCatalogue([
+      withVersions([{ v: "0.1.0-beta.2", channel: "beta" }]),
+    ])[0]?.offers[0];
+
+    expect(offer?.state).toBe("flashable");
+    expect(offer?.build?.version).toBe("0.1.0-beta.2");
+  });
+
+  it("orders versions the way the device does, not lexically", () => {
+    const offer = boardCatalogue([
+      // Deliberately NOT in order: if the chooser merely preserved input order
+      // this test would pass for the wrong reason.
+      withVersions([{ v: "1.9.0" }, { v: "1.2.0" }, { v: "1.10.0" }]),
+    ])[0]?.offers[0];
+
+    // Lexically "1.10.0" < "1.9.0"; the device compares the numeric core, and
+    // a flasher that disagreed with it would offer the wrong "newest".
+    expect(offer?.build?.version).toBe("1.10.0");
+    expect(offer?.builds[0]?.version).toBe("1.10.0");
+  });
+
+  it("keeps builds empty when nothing is installable", () => {
+    const entries = boardCatalogue([gateway]);
+    for (const e of entries) {
+      expect(e.offers[0]?.state).toBe("none");
+      expect(e.offers[0]?.builds).toEqual([]);
+    }
+  });
+
+  it("says when a newer release exists but cannot be installed here", () => {
+    // An older release being installable must not hide the newest one being
+    // unidentifiable: without a word on screen the page looks stale to anyone
+    // who knows a newer version shipped. An earlier version of this test
+    // asserted the reason was dropped, which codified the gap instead of
+    // questioning it.
+    const mixed: CatalogueProject = {
+      ...cockpit,
+      releases: [
+        {
+          version: "2.0.0",
+          channel: "stable",
+          builds: [
+            {
+              target: "esp32p4",
+              mergedUrl: "https://example.invalid/agnostic.bin",
+            },
+          ],
+        },
+        ...(cockpit.releases ?? []),
+      ],
+    };
+    const offer = boardCatalogue([mixed])[0]?.offers[0];
+    // 1.3.1 names the board, so there IS something installable.
+    expect(offer?.state).toBe("flashable");
+    expect(offer?.builds.map((b) => b.version)).toEqual(["1.3.1"]);
+    // 2.0.0 is not offered, because it cannot be tied to a board...
+    expect(offer?.builds.map((b) => b.version)).not.toContain("2.0.0");
+    // ...but the page is told why, naming the version being held back.
+    expect(offer?.note).toBeDefined();
+    expect(offer?.note).toContain("2.0.0");
+    expect(offer?.note).toContain("black");
+  });
+
+  it("does not add a note when the unusable release is OLDER", () => {
+    // Only a newer release is worth mentioning. An old OTA-only build being
+    // skipped is routine and explaining it every time would be noise.
+    const oldOtaOnly: CatalogueProject = {
+      id: "old",
+      name: "Old",
+      repo: "example/old",
+      boards: [{ id: "c6", target: "esp32c6", name: "C6" }],
+      releases: [
+        {
+          version: "2.0.0",
+          channel: "stable",
+          builds: [
+            {
+              target: "esp32c6",
+              boardId: "c6",
+              mergedUrl: "https://example.invalid/2.bin",
+            },
+          ],
+        },
+        {
+          version: "1.0.0",
+          channel: "stable",
+          builds: [
+            {
+              target: "esp32c6",
+              boardId: "c6",
+              otaUrl: "https://example.invalid/1-ota.bin",
+            },
+          ],
+        },
+      ],
+    };
+    const offer = boardCatalogue([oldOtaOnly])[0]?.offers[0];
+    expect(offer?.build?.version).toBe("2.0.0");
+    expect(offer?.note).toBeUndefined();
+  });
+});

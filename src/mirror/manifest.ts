@@ -21,6 +21,11 @@
  */
 
 import type { AppName, Channel, Target } from "../types.js";
+/* Imported for this module's own use and re-exported so every existing
+ * importer keeps working: the implementations moved to version.ts only so the
+ * browser can share them. */
+import { compareVersions, isNewer, isReleaseVersion } from "./version.js";
+export { compareVersions, isNewer, isReleaseVersion };
 
 /** `char version[32]`, NUL included. */
 export const MAX_VERSION_BYTES = 31;
@@ -94,82 +99,6 @@ export function truncateBytes(value: string, maxBytes: number): string {
 /** Newest first, using the same ordering rules the device applies. */
 function compareVersionsDesc(a: string, b: string): number {
   return compareVersions(b, a);
-}
-
-/**
- * Compare two versions the way `espos_ota_version_cmp` does: a dotted numeric
- * core of up to four parts, a `-prerelease` suffix sorting BELOW the release
- * it qualifies, and a fallback to plain string comparison when the core does
- * not parse. Reimplemented here so the plugin and the device can never
- * disagree about which build is newer.
- */
-export function compareVersions(a: string, b: string): number {
-  // Mirrors parse_core(): an optional v/V, then up to four dot-separated
-  // numbers, stopping at the first component that is not digit-dot-digit.
-  // Whatever is left is `rest`, and it keeps its leading '-'.
-  const parseCore = (
-    value: string,
-  ): { core: number[]; rest: string; count: number } => {
-    let s = value;
-    if (s.startsWith("v") || s.startsWith("V")) s = s.slice(1);
-    const core: number[] = [0, 0, 0, 0];
-    let count = 0;
-    while (count < 4) {
-      const m = /^\d+/.exec(s);
-      if (m === null) break;
-      core[count] = Number(m[0]);
-      count += 1;
-      s = s.slice(m[0].length);
-      if (s.startsWith(".") && /^\d/.test(s.slice(1))) {
-        s = s.slice(1);
-      } else {
-        break;
-      }
-    }
-    return { core, rest: s, count };
-  };
-
-  const pa = parseCore(a);
-  const pb = parseCore(b);
-  // strcmp on the whole strings when either has no numeric core at all.
-  if (pa.count === 0 || pb.count === 0) return strcmp(a, b);
-
-  for (let i = 0; i < 4; i += 1) {
-    const na = pa.core[i] ?? 0;
-    const nb = pb.core[i] ?? 0;
-    if (na !== nb) return na < nb ? -1 : 1;
-  }
-  // Same core: a prerelease ("-...") is older than a release.
-  const preA = pa.rest.startsWith("-");
-  const preB = pb.rest.startsWith("-");
-  if (preA !== preB) return preA ? -1 : 1;
-  if (preA) return strcmp(pa.rest, pb.rest);
-  return 0;
-}
-
-/** Byte-wise comparison, as C's strcmp does it (not locale-aware). */
-function strcmp(a: string, b: string): number {
-  const ba = Buffer.from(a, "utf8");
-  const bb = Buffer.from(b, "utf8");
-  const cmp = Buffer.compare(ba, bb);
-  return cmp;
-}
-
-/** True when `candidate` is newer than `running`. */
-export function isNewer(candidate: string, running: string): boolean {
-  return compareVersions(candidate, running) > 0;
-}
-
-/**
- * True when a version string is a release rather than a development build.
- *
- * Devices in the field run git-describe versions such as
- * `1.1.0-12-g44590ce-dirty`, which compare BELOW `1.1.0`. Offering them
- * `1.1.0` is a downgrade wearing an update's clothes, so the caller must ask
- * before doing it.
- */
-export function isReleaseVersion(version: string): boolean {
-  return /^v?\d+(\.\d+){0,3}$/.test(version.trim());
 }
 
 /**
