@@ -230,7 +230,7 @@ describe("configureOta against a device that is still booting", () => {
   it("retries once when the device did not answer, then succeeds", async () => {
     // Simulates the case seen on the boat: "Fix this" clicked on a panel
     // still booting after a web-flash, where the one attempt was refused.
-    const { port, config } = await startConfigDevice();
+    const { port, config, puts } = await startConfigDevice();
     const client = new DeviceClient({
       address: "127.0.0.1",
       port,
@@ -244,9 +244,43 @@ describe("configureOta against a device that is still booting", () => {
       retryDelayMs: 0,
     });
     expect(result.applied.manifestSrc).toBe("signalk");
+    expect(result.changed).toContain("ota.manifest_src");
+    expect(puts()).toBe(1); // the refused attempt never reached the device
     expect((config.ota as Record<string, unknown>).manifest_src).toBe(
       "signalk",
     );
+  });
+
+  it("does not resend a write that landed but lost its reply", async () => {
+    const { port, puts } = await startConfigDevice();
+    let call = 0;
+    const client = new DeviceClient({
+      address: "127.0.0.1",
+      port,
+      fetchImpl: async (input, init) => {
+        call += 1;
+        const response = await fetch(input, init);
+        if (call === 1) {
+          // The device applied the PUT; the reply never arrived.
+          await response.text();
+          const cause = Object.assign(new Error("socket hang up"), {
+            code: "ECONNRESET",
+          });
+          throw new TypeError("fetch failed", { cause });
+        }
+        return response;
+      },
+    });
+    const result = await configureOta({
+      client,
+      app: "cockpit",
+      channel: "stable",
+      publicBase: PUBLIC_FW_BASE,
+      retryDelayMs: 0,
+    });
+    expect(puts()).toBe(1);
+    expect(result.changed).toEqual([]);
+    expect(result.applied.manifestSrc).toBe("signalk");
   });
 
   it("retries only the read-back when the write already landed", async () => {
@@ -275,7 +309,7 @@ describe("configureOta against a device that is still booting", () => {
     const client = new DeviceClient({
       address: "127.0.0.1",
       port,
-      fetchImpl: refusingFetch(2),
+      fetchImpl: refusingFetch(10),
     });
     await expect(
       configureOta({

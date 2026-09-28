@@ -53,10 +53,14 @@ export class DeviceUnreachableError extends Error {
 }
 
 function unreachableCode(error: unknown, aborted: boolean): string {
-  if (aborted) return "timeout";
+  // The socket's own code first: the timer can fire while a reset is already
+  // settling, and "timeout" would then hide the real reason.
   const cause = (error as { cause?: unknown } | undefined)?.cause;
   const code = (cause as { code?: unknown } | undefined)?.code;
   if (typeof code === "string" && code !== "") return code;
+  if (aborted || (error instanceof Error && error.name === "AbortError")) {
+    return "timeout";
+  }
   return error instanceof Error ? error.message : String(error);
 }
 

@@ -49,16 +49,18 @@ interface ManagerState {
   /** Why the last background refresh failed; cleared by the next one. */
   loadError?: string;
   /**
-   * The outcome of the last action. Kept apart from loadError so the 5 s
-   * refresh cannot clear it: it did, and a failed action was on screen for
-   * about two seconds -- which reads as the button doing nothing at all.
+   * The outcome of the last action, kept apart from loadError so a background
+   * refresh never clears it: it stays until dismissed or the next action.
    */
   error?: string;
   notice?: string;
   /** A failed action that asked for its error beside its control. */
   inlineError?: { key: string; message: string };
-  /** Key of the action running now, so its control can show it is busy. */
-  acting?: string;
+  /**
+   * Keys of the actions still running, one entry each, so an action that
+   * finishes does not mark another one idle while it is still in flight.
+   */
+  acting: string[];
   lastRefresh?: number;
 
   go: (page: Page, deviceId?: string) => void;
@@ -78,11 +80,14 @@ function describe(error: unknown): string {
   return String(error);
 }
 
+let registryInFlight = false;
+
 export const useStore = create<ManagerState>((set, get) => ({
   page: "fleet",
   available: {},
   loading: false,
   needsLogin: false,
+  acting: [],
 
   go: (page, deviceId) => {
     set({
@@ -125,15 +130,24 @@ export const useStore = create<ManagerState>((set, get) => ({
       });
       // Not awaited: an action awaits this refresh before showing its
       // outcome, and would otherwise stay "busy" for as long as the internet
-      // fetch takes, or forever.
-      void api.registry().then(
-        (registry) => {
-          set({ registry });
-        },
-        () => {
-          // Keep whatever we had; the store page shows the staleness itself.
-        },
-      );
+      // fetch takes, or forever. One at a time, so a stalled fetch is not
+      // joined by another every five seconds.
+      if (!registryInFlight) {
+        registryInFlight = true;
+        void api
+          .registry()
+          .then(
+            (registry) => {
+              set({ registry });
+            },
+            () => {
+              // Keep whatever we had; the store page shows the staleness.
+            },
+          )
+          .finally(() => {
+            registryInFlight = false;
+          });
+      }
     } catch (error) {
       if (error instanceof ApiError && error.isUnauthorized) {
         set({ needsLogin: true, loading: false });
@@ -159,13 +173,14 @@ export const useStore = create<ManagerState>((set, get) => ({
 
   /** Run an action, then refresh — with the outcome shown either way. */
   act: async (what, fn, options) => {
-    set({
+    const key = options?.key ?? what;
+    set((state) => ({
       loading: true,
-      acting: options?.key ?? what,
+      acting: [...state.acting, key],
       error: undefined,
       notice: undefined,
       inlineError: undefined,
-    });
+    }));
     let outcome: Partial<ManagerState>;
     try {
       await fn();
@@ -174,17 +189,20 @@ export const useStore = create<ManagerState>((set, get) => ({
       outcome =
         options?.errorInline === true
           ? {
-              inlineError: {
-                key: options.key ?? what,
-                message: describe(error),
-              },
+              inlineError: { key, message: describe(error) },
             }
           : { error: `${what} — ${describe(error)}` };
     }
     // Refreshed before the outcome is shown, so a control that is still on
     // screen reflects the result -- a fixed device's warning is gone by then.
     await get().refresh();
-    set({ ...outcome, acting: undefined });
+    set((state) => {
+      const at = state.acting.indexOf(key);
+      return {
+        ...outcome,
+        acting: state.acting.filter((_, i) => i !== at),
+      };
+    });
     const selected = get().selectedDevice;
     if (selected !== undefined) await get().loadAvailable(selected);
   },

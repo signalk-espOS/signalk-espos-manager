@@ -56,4 +56,24 @@ describe("DeviceClient network failures", () => {
       await new Promise<void>((resolve) => server.close(() => resolve()));
     }
   });
+
+  it("prefers the socket's own code over calling it a timeout", async () => {
+    const cause = Object.assign(new Error("reset"), { code: "ECONNRESET" });
+    const client = new DeviceClient({
+      address: "127.0.0.1",
+      fetchImpl: () => Promise.reject(new TypeError("fetch failed", { cause })),
+    });
+    const error: unknown = await client.getConfig().catch((e: unknown) => e);
+    expect((error as DeviceUnreachableError).code).toBe("ECONNRESET");
+  });
+
+  it("calls an aborted request with no socket code a timeout", async () => {
+    const abort = Object.assign(new Error("aborted"), { name: "AbortError" });
+    const client = new DeviceClient({
+      address: "127.0.0.1",
+      fetchImpl: () => Promise.reject(abort),
+    });
+    const error: unknown = await client.getConfig().catch((e: unknown) => e);
+    expect((error as DeviceUnreachableError).code).toBe("timeout");
+  });
 });

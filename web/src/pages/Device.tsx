@@ -42,7 +42,9 @@ export function DevicePage() {
   }
 
   // Keyed by device id, so a fix still running when the operator opens another
-  // device neither shows as busy there nor lands its error on that card.
+  // device neither shows as busy there nor lands its error on that card. The
+  // button stays disabled while this device's fix runs, so it cannot be sent
+  // twice.
   const fixOtaKey = `configure-ota:${device.id}`;
   const offer = available[device.id];
   const job = jobs?.jobs.find((j) => j.deviceId === device.id);
@@ -163,7 +165,7 @@ export function DevicePage() {
           <h3>Not set up for updates</h3>
           <p class="muted small">{device.otaRepairReason}</p>
           <button
-            disabled={acting !== undefined}
+            disabled={acting.includes(fixOtaKey)}
             onClick={() =>
               void act(
                 `Point ${device.hostname ?? device.id} at the server`,
@@ -172,7 +174,9 @@ export function DevicePage() {
               )
             }
           >
-            {acting === fixOtaKey ? "Pointing it at the server…" : "Fix this"}
+            {acting.includes(fixOtaKey)
+              ? "Pointing it at the server…"
+              : "Fix this"}
           </button>
           {inlineError?.key === fixOtaKey && (
             <p class="warn-text small" role="alert">
