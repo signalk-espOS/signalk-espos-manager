@@ -953,4 +953,41 @@ describe("defaultBuilds", () => {
     };
     expect(defaultBuilds([variants]).map((b) => b.version)).toEqual(["1.0.0"]);
   });
+
+  it("counts an OTA-only variant when judging a release ambiguous", () => {
+    // Only one of the two board images has a full-flash file, but it is still
+    // one of two: which board it fits is unknown either way.
+    const mixed: CatalogueProject = {
+      id: "o",
+      name: "O",
+      repo: "example/o",
+      releases: [
+        {
+          version: "2.0.0",
+          channel: "stable",
+          builds: [
+            {
+              target: "esp32p4",
+              mergedUrl: "https://github.invalid/2.0.0-a.bin",
+            },
+            {
+              target: "esp32p4",
+              otaUrl: "https://github.invalid/2.0.0-b-ota.bin",
+            },
+          ],
+        },
+        {
+          version: "1.0.0",
+          channel: "stable",
+          builds: [
+            {
+              target: "esp32p4",
+              mergedUrl: "https://github.invalid/1.0.0.bin",
+            },
+          ],
+        },
+      ],
+    };
+    expect(defaultBuilds([mixed]).map((b) => b.version)).toEqual(["1.0.0"]);
+  });
 });

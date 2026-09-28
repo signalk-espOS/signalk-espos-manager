@@ -558,17 +558,27 @@ export function defaultBuilds(projects: CatalogueProject[]): FlashBuild[] {
   // A release with two images for one chip ships board variants the project
   // never declared, so nothing here can say which one fits: offering either
   // could write one panel's firmware to the other. Such a release is skipped
-  // and the default falls to the newest release that is unambiguous.
-  const release = (b: FlashBuild): string =>
-    `${b.projectId}\u0000${b.target}\u0000${b.version}`;
+  // and the default falls to the newest release that is unambiguous. Counted
+  // from the release itself, not from `builds`: allBuilds drops an image with
+  // no full-flash file, and a variant that is OTA-only is still a variant.
+  const release = (projectId: string, target: string, version: string) =>
+    `${projectId}\u0000${target}\u0000${version}`;
   const perRelease = new Map<string, number>();
-  for (const build of builds) {
-    perRelease.set(release(build), (perRelease.get(release(build)) ?? 0) + 1);
+  for (const project of boardless) {
+    for (const r of project.releases ?? []) {
+      for (const b of r.builds) {
+        const key = release(project.id, b.target, r.version);
+        perRelease.set(key, (perRelease.get(key) ?? 0) + 1);
+      }
+    }
   }
   const perChip = new Map<string, FlashBuild>();
   // allBuilds lists each project newest first.
   for (const build of builds) {
-    if ((perRelease.get(release(build)) ?? 0) > 1) continue;
+    const images = perRelease.get(
+      release(build.projectId, build.target, build.version),
+    );
+    if ((images ?? 0) > 1) continue;
     const key = `${build.projectId}\u0000${build.target}`;
     const current = perChip.get(key);
     if (
