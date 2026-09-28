@@ -47,7 +47,7 @@ beforeEach(() => {
   useStore.setState({
     error: undefined,
     notice: undefined,
-    inlineError: undefined,
+    inlineErrors: {},
     loadError: undefined,
     acting: [],
   });
@@ -76,9 +76,8 @@ describe("store actions", () => {
       );
     const state = useStore.getState();
     expect(state.error).toBeUndefined();
-    expect(state.inlineError).toEqual({
-      key: "Point this device at the server",
-      message: "refused",
+    expect(state.inlineErrors).toEqual({
+      "Point this device at the server": "refused",
     });
   });
 
@@ -123,7 +122,9 @@ describe("store actions", () => {
       { errorInline: true, key: "configure-ota:2be9" },
     );
     expect(seen).toEqual(["configure-ota:2be9"]);
-    expect(useStore.getState().inlineError?.key).toBe("configure-ota:2be9");
+    expect(useStore.getState().inlineErrors).toEqual({
+      "configure-ota:2be9": "refused",
+    });
   });
 
   it("keeps an action busy while another one finishes", async () => {
@@ -160,5 +161,36 @@ describe("store actions", () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
     await useStore.getState().refresh();
     expect(registry.calls).toBe(2);
+  });
+
+  it("keeps each device's repair error apart", async () => {
+    const fail = (message: string) => () => Promise.reject(new Error(message));
+    await useStore
+      .getState()
+      .act("Point espos-2be9 at the server", fail("2be9 refused"), {
+        errorInline: true,
+        key: "configure-ota:2be9",
+      });
+    await useStore
+      .getState()
+      .act("Point espos-6f19 at the server", fail("6f19 timed out"), {
+        errorInline: true,
+        key: "configure-ota:6f19",
+      });
+    expect(useStore.getState().inlineErrors).toEqual({
+      "configure-ota:2be9": "2be9 refused",
+      "configure-ota:6f19": "6f19 timed out",
+    });
+
+    // A retry clears only its own device's message.
+    await useStore
+      .getState()
+      .act("Point espos-2be9 at the server", () => Promise.resolve(), {
+        errorInline: true,
+        key: "configure-ota:2be9",
+      });
+    expect(useStore.getState().inlineErrors).toEqual({
+      "configure-ota:6f19": "6f19 timed out",
+    });
   });
 });

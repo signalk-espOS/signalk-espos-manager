@@ -27,7 +27,7 @@ export function DevicePage() {
     go,
     act,
     acting,
-    inlineError,
+    inlineErrors,
   } = useStore();
   const [key, setKey] = useState("");
 
@@ -178,9 +178,9 @@ export function DevicePage() {
               ? "Pointing it at the server…"
               : "Fix this"}
           </button>
-          {inlineError?.key === fixOtaKey && (
+          {inlineErrors[fixOtaKey] !== undefined && (
             <p class="warn-text small" role="alert">
-              Did not work: {inlineError.message}
+              Did not work: {inlineErrors[fixOtaKey]}
             </p>
           )}
         </div>

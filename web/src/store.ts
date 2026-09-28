@@ -28,7 +28,7 @@ export interface ActOptions {
    */
   errorInline?: boolean;
   /**
-   * Identifies the action for `acting` and `inlineError`. Defaults to the
+   * Identifies the action for `acting` and `inlineErrors`. Defaults to the
    * label, which is shown to people and need not be unique -- a key built
    * from a device id keeps one device's action off another's page.
    */
@@ -54,8 +54,12 @@ interface ManagerState {
    */
   error?: string;
   notice?: string;
-  /** A failed action that asked for its error beside its control. */
-  inlineError?: { key: string; message: string };
+  /**
+   * Failures of actions that asked for them beside their control, by action
+   * key. One per key, so two devices repaired at once keep their own
+   * message; each is replaced only by that action's next attempt.
+   */
+  inlineErrors: Record<string, string>;
   /**
    * Keys of the actions still running, one entry each, so an action that
    * finishes does not mark another one idle while it is still in flight.
@@ -82,12 +86,21 @@ function describe(error: unknown): string {
 
 let registryInFlight = false;
 
+function withoutKey(
+  map: Record<string, string>,
+  key: string,
+): Record<string, string> {
+  if (!(key in map)) return map;
+  return Object.fromEntries(Object.entries(map).filter(([k]) => k !== key));
+}
+
 export const useStore = create<ManagerState>((set, get) => ({
   page: "fleet",
   available: {},
   loading: false,
   needsLogin: false,
   acting: [],
+  inlineErrors: {},
 
   go: (page, deviceId) => {
     set({
@@ -95,7 +108,6 @@ export const useStore = create<ManagerState>((set, get) => ({
       selectedDevice: deviceId,
       notice: undefined,
       error: undefined,
-      inlineError: undefined,
     });
     if (page === "device" && deviceId !== undefined) {
       void get().loadAvailable(deviceId);
@@ -179,19 +191,16 @@ export const useStore = create<ManagerState>((set, get) => ({
       acting: [...state.acting, key],
       error: undefined,
       notice: undefined,
-      inlineError: undefined,
+      inlineErrors: withoutKey(state.inlineErrors, key),
     }));
-    let outcome: Partial<ManagerState>;
+    let outcome: { notice?: string; error?: string } = {};
+    let inlineError: string | undefined;
     try {
       await fn();
       outcome = { notice: `${what} — done` };
     } catch (error) {
-      outcome =
-        options?.errorInline === true
-          ? {
-              inlineError: { key, message: describe(error) },
-            }
-          : { error: `${what} — ${describe(error)}` };
+      if (options?.errorInline === true) inlineError = describe(error);
+      else outcome = { error: `${what} — ${describe(error)}` };
     }
     // Refreshed before the outcome is shown, so a control that is still on
     // screen reflects the result -- a fixed device's warning is gone by then.
@@ -201,6 +210,10 @@ export const useStore = create<ManagerState>((set, get) => ({
       return {
         ...outcome,
         acting: state.acting.filter((_, i) => i !== at),
+        inlineErrors:
+          inlineError === undefined
+            ? state.inlineErrors
+            : { ...state.inlineErrors, [key]: inlineError },
       };
     });
     const selected = get().selectedDevice;
@@ -208,6 +221,6 @@ export const useStore = create<ManagerState>((set, get) => ({
   },
 
   dismiss: () => {
-    set({ notice: undefined, error: undefined, inlineError: undefined });
+    set({ notice: undefined, error: undefined });
   },
 }));
