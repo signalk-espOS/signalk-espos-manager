@@ -531,3 +531,62 @@ export function allBuilds(projects: CatalogueProject[]): FlashBuild[] {
   }
   return out;
 }
+
+/**
+ * One build per project and board: the one to offer when there is no room to
+ * choose a version, as on the plugin's own flash page.
+ *
+ * For a board a project declares, that is the board offer's own `build` --
+ * the newest stable release, or the newest prerelease when nothing is stable --
+ * taken from the catalogue rather than re-derived, so it is chosen per board
+ * as the catalogue resolved it. A chip-wide image offered for a board carries
+ * no `boardId` of its own, so grouping raw builds by `boardId` would give that
+ * board two defaults.
+ *
+ * A project that declares no boards cannot be placed on one, so it gets one
+ * default per chip by the same rule.
+ */
+export function defaultBuilds(projects: CatalogueProject[]): FlashBuild[] {
+  const out: FlashBuild[] = [];
+  for (const entry of boardCatalogue(projects)) {
+    for (const offer of entry.offers) {
+      if (offer.build !== undefined) out.push(offer.build);
+    }
+  }
+  const boardless = projects.filter((p) => (p.boards ?? []).length === 0);
+  const builds = allBuilds(boardless);
+  // A release with two images for one chip ships board variants the project
+  // never declared, so nothing here can say which one fits: offering either
+  // could write one panel's firmware to the other. Such a release is skipped
+  // and the default falls to the newest release that is unambiguous. Counted
+  // from the release itself, not from `builds`: allBuilds drops an image with
+  // no full-flash file, and a variant that is OTA-only is still a variant.
+  const release = (projectId: string, target: string, version: string) =>
+    `${projectId}\u0000${target}\u0000${version}`;
+  const perRelease = new Map<string, number>();
+  for (const project of boardless) {
+    for (const r of project.releases ?? []) {
+      for (const b of r.builds) {
+        const key = release(project.id, b.target, r.version);
+        perRelease.set(key, (perRelease.get(key) ?? 0) + 1);
+      }
+    }
+  }
+  const perChip = new Map<string, FlashBuild>();
+  // allBuilds lists each project newest first.
+  for (const build of builds) {
+    const images = perRelease.get(
+      release(build.projectId, build.target, build.version),
+    );
+    if ((images ?? 0) > 1) continue;
+    const key = `${build.projectId}\u0000${build.target}`;
+    const current = perChip.get(key);
+    if (
+      current === undefined ||
+      (isPrerelease(current) && !isPrerelease(build))
+    ) {
+      perChip.set(key, build);
+    }
+  }
+  return [...out, ...perChip.values()];
+}
