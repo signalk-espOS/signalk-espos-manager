@@ -27,8 +27,18 @@ afterEach(async () => {
 
 /** A device whose config PUT merges, like espos_config_import_json does. */
 async function startConfigDevice(
-  options: { rejectUnknown?: boolean; frozen?: boolean } = {},
-): Promise<{ client: DeviceClient; config: Record<string, unknown> }> {
+  options: {
+    rejectUnknown?: boolean;
+    frozen?: boolean;
+    putStatus?: number;
+  } = {},
+): Promise<{
+  client: DeviceClient;
+  config: Record<string, unknown>;
+  port: number;
+  puts: () => number;
+}> {
+  let puts = 0;
   const config: Record<string, unknown> = {
     ota: {
       manifest_src: "url",
@@ -50,6 +60,15 @@ async function startConfigDevice(
       return;
     }
     if (req.url === "/api/v1/config" && req.method === "PUT") {
+      puts += 1;
+      if (options.putStatus !== undefined) {
+        send(options.putStatus, {
+          error: "validation",
+          path: "ota.manifest_src",
+          message: "unknown key",
+        });
+        return;
+      }
       let body = "";
       req.on("data", (c: Buffer) => (body += c.toString()));
       req.on("end", () => {
@@ -90,6 +109,32 @@ async function startConfigDevice(
   return {
     client: new DeviceClient({ address: "127.0.0.1", port }),
     config,
+    port,
+    puts: () => puts,
+  };
+}
+
+/**
+ * fetch as Node reports a device that is not listening yet: a TypeError
+ * "fetch failed" with the socket error in `cause`. Fails `times` calls, then
+ * behaves normally.
+ */
+function refusingFetch(times: number): typeof fetch {
+  return refusingCalls(new Set(Array.from({ length: times }, (_, i) => i + 1)));
+}
+
+/** Refuses exactly the numbered calls (1-based), answers the rest. */
+function refusingCalls(refused: Set<number>): typeof fetch {
+  let call = 0;
+  return (input, init) => {
+    call += 1;
+    if (refused.has(call)) {
+      const cause = Object.assign(new Error("connect ECONNREFUSED"), {
+        code: "ECONNREFUSED",
+      });
+      return Promise.reject(new TypeError("fetch failed", { cause }));
+    }
+    return fetch(input, init);
   };
 }
 
@@ -178,6 +223,85 @@ describe("configureOta", () => {
         publicBase: PUBLIC_FW_BASE,
       }),
     ).resolves.toMatchObject({ manifestPath: EXPECTED_PATH });
+  });
+});
+
+describe("configureOta against a device that is still booting", () => {
+  it("retries once when the device did not answer, then succeeds", async () => {
+    // Simulates the case seen on the boat: "Fix this" clicked on a panel
+    // still booting after a web-flash, where the one attempt was refused.
+    const { port, config } = await startConfigDevice();
+    const client = new DeviceClient({
+      address: "127.0.0.1",
+      port,
+      fetchImpl: refusingFetch(1),
+    });
+    const result = await configureOta({
+      client,
+      app: "cockpit",
+      channel: "stable",
+      publicBase: PUBLIC_FW_BASE,
+      retryDelayMs: 0,
+    });
+    expect(result.applied.manifestSrc).toBe("signalk");
+    expect((config.ota as Record<string, unknown>).manifest_src).toBe(
+      "signalk",
+    );
+  });
+
+  it("retries only the read-back when the write already landed", async () => {
+    // Re-sending the write would find nothing left to change and report an
+    // empty `changed`, hiding what the first write actually did.
+    const { port, puts } = await startConfigDevice();
+    const client = new DeviceClient({
+      address: "127.0.0.1",
+      port,
+      fetchImpl: refusingCalls(new Set([2])), // the GET after the PUT
+    });
+    const result = await configureOta({
+      client,
+      app: "cockpit",
+      channel: "stable",
+      publicBase: PUBLIC_FW_BASE,
+      retryDelayMs: 0,
+    });
+    expect(puts()).toBe(1);
+    expect(result.changed).toContain("ota.manifest_src");
+    expect(result.applied.manifestSrc).toBe("signalk");
+  });
+
+  it("names the cause and what to do when the retry fails too", async () => {
+    const { port } = await startConfigDevice();
+    const client = new DeviceClient({
+      address: "127.0.0.1",
+      port,
+      fetchImpl: refusingFetch(2),
+    });
+    await expect(
+      configureOta({
+        client,
+        app: "cockpit",
+        channel: "stable",
+        publicBase: PUBLIC_FW_BASE,
+        retryDelayMs: 0,
+      }),
+    ).rejects.toThrow(/did not answer.*ECONNREFUSED.*few seconds/);
+  });
+
+  it("does not retry a device that answered with an error", async () => {
+    // An HTTP error is the device's considered answer; asking again only
+    // repeats it and doubles the wait before the operator sees it.
+    const { client, puts } = await startConfigDevice({ putStatus: 400 });
+    await expect(
+      configureOta({
+        client,
+        app: "cockpit",
+        channel: "stable",
+        publicBase: PUBLIC_FW_BASE,
+        retryDelayMs: 0,
+      }),
+    ).rejects.toThrow(/HTTP 400.*unknown key/);
+    expect(puts()).toBe(1);
   });
 });
 

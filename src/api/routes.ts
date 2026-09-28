@@ -37,7 +37,14 @@ export interface PluginRouter {
 }
 
 function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
+  if (!(error instanceof Error)) return String(error);
+  // Node's fetch reports every network failure as "fetch failed" and keeps
+  // the reason (ECONNREFUSED, ENOTFOUND, ...) in `cause`, where a JSON reply
+  // would otherwise drop it.
+  const code = (error.cause as { code?: unknown } | undefined)?.code;
+  return typeof code === "string" && !error.message.includes(code)
+    ? `${error.message} (${code})`
+    : error.message;
 }
 
 export function registerRoutes(
@@ -321,6 +328,11 @@ export function registerRoutes(
             app,
             channel: settings?.ota.channel ?? "stable",
             publicBase: PUBLIC_FW_BASE,
+          });
+          service.fleet.setOtaConfig(id, {
+            manifestSrc: result.applied.manifestSrc,
+            manifestPath: result.applied.manifestPath,
+            manifestUrl: result.applied.manifestUrl,
           });
           res.json({ ok: true, ...result });
         } catch (error) {

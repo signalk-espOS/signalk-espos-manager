@@ -21,6 +21,20 @@ import {
 
 export type Page = "fleet" | "store" | "device" | "flash";
 
+export interface ActOptions {
+  /**
+   * Report a failure beside the control that started it rather than in the
+   * banner at the top of the page, which is off-screen on a long device page.
+   */
+  errorInline?: boolean;
+  /**
+   * Identifies the action for `acting` and `inlineError`. Defaults to the
+   * label, which is shown to people and need not be unique -- a key built
+   * from a device id keeps one device's action off another's page.
+   */
+  key?: string;
+}
+
 interface ManagerState {
   page: Page;
   selectedDevice?: string;
@@ -32,14 +46,29 @@ interface ManagerState {
   loading: boolean;
   /** Set when the API says we are not an administrator. */
   needsLogin: boolean;
+  /** Why the last background refresh failed; cleared by the next one. */
+  loadError?: string;
+  /**
+   * The outcome of the last action. Kept apart from loadError so the 5 s
+   * refresh cannot clear it: it did, and a failed action was on screen for
+   * about two seconds -- which reads as the button doing nothing at all.
+   */
   error?: string;
   notice?: string;
+  /** A failed action that asked for its error beside its control. */
+  inlineError?: { key: string; message: string };
+  /** Key of the action running now, so its control can show it is busy. */
+  acting?: string;
   lastRefresh?: number;
 
   go: (page: Page, deviceId?: string) => void;
   refresh: () => Promise<void>;
   loadAvailable: (id: string) => Promise<void>;
-  act: (what: string, fn: () => Promise<unknown>) => Promise<void>;
+  act: (
+    what: string,
+    fn: () => Promise<unknown>,
+    options?: ActOptions,
+  ) => Promise<void>;
   dismiss: () => void;
 }
 
@@ -61,6 +90,7 @@ export const useStore = create<ManagerState>((set, get) => ({
       selectedDevice: deviceId,
       notice: undefined,
       error: undefined,
+      inlineError: undefined,
     });
     if (page === "device" && deviceId !== undefined) {
       void get().loadAvailable(deviceId);
@@ -90,20 +120,26 @@ export const useStore = create<ManagerState>((set, get) => ({
         jobs,
         needsLogin: false,
         loading: false,
-        error: undefined,
+        loadError: undefined,
         lastRefresh: Date.now(),
       });
-      try {
-        set({ registry: await api.registry() });
-      } catch {
-        // Keep whatever we had; the store page shows the staleness itself.
-      }
+      // Not awaited: an action awaits this refresh before showing its
+      // outcome, and would otherwise stay "busy" for as long as the internet
+      // fetch takes, or forever.
+      void api.registry().then(
+        (registry) => {
+          set({ registry });
+        },
+        () => {
+          // Keep whatever we had; the store page shows the staleness itself.
+        },
+      );
     } catch (error) {
       if (error instanceof ApiError && error.isUnauthorized) {
         set({ needsLogin: true, loading: false });
         return;
       }
-      set({ error: describe(error), loading: false });
+      set({ loadError: describe(error), loading: false });
     }
   },
 
@@ -122,25 +158,38 @@ export const useStore = create<ManagerState>((set, get) => ({
   },
 
   /** Run an action, then refresh — with the outcome shown either way. */
-  act: async (what, fn) => {
-    set({ loading: true, error: undefined, notice: undefined });
-    let outcome: { notice?: string; error?: string };
+  act: async (what, fn, options) => {
+    set({
+      loading: true,
+      acting: options?.key ?? what,
+      error: undefined,
+      notice: undefined,
+      inlineError: undefined,
+    });
+    let outcome: Partial<ManagerState>;
     try {
       await fn();
       outcome = { notice: `${what} — done` };
     } catch (error) {
-      outcome = { error: `${what} — ${describe(error)}` };
+      outcome =
+        options?.errorInline === true
+          ? {
+              inlineError: {
+                key: options.key ?? what,
+                message: describe(error),
+              },
+            }
+          : { error: `${what} — ${describe(error)}` };
     }
-    // The refresh below clears error/notice on success, so the outcome is
-    // re-applied afterwards. Without this a failed action vanished silently,
-    // which is the worst way for one to fail.
+    // Refreshed before the outcome is shown, so a control that is still on
+    // screen reflects the result -- a fixed device's warning is gone by then.
     await get().refresh();
-    set(outcome);
+    set({ ...outcome, acting: undefined });
     const selected = get().selectedDevice;
     if (selected !== undefined) await get().loadAvailable(selected);
   },
 
   dismiss: () => {
-    set({ notice: undefined, error: undefined });
+    set({ notice: undefined, error: undefined, inlineError: undefined });
   },
 }));

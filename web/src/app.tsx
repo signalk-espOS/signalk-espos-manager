@@ -15,6 +15,7 @@ export function App() {
     refresh,
     loading,
     needsLogin,
+    loadError,
     error,
     notice,
     dismiss,
@@ -85,6 +86,11 @@ export function App() {
       {error !== undefined && (
         <div class="card error" onClick={dismiss} role="alert">
           {error}
+        </div>
+      )}
+      {loadError !== undefined && (
+        <div class="card error" role="alert">
+          {loadError}
         </div>
       )}
       {notice !== undefined && (
