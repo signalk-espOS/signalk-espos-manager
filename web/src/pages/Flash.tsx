@@ -8,7 +8,15 @@ import {
   writeImage,
 } from "../flash/loader.js";
 import { preflight, type PreflightReport } from "../flash/preflight.js";
-import type { FlashBuild, Target } from "../flash/types.js";
+import {
+  defaultBuilds,
+  isPrerelease,
+  type CatalogueProject,
+} from "../flash/catalogue.js";
+import type { FlashBuild } from "../flash/types.js";
+
+/** A build this page can download: its image is on a CORS-readable mirror. */
+type WebBuild = FlashBuild & { mergedWebUrl: string };
 
 /** Where the HTTPS-hosted copy of this page lives. */
 const HOSTED_FLASHER =
@@ -20,10 +28,10 @@ function mb(bytes: number | undefined): string {
 }
 
 export function FlashPage() {
-  const { registry, mirror } = useStore();
+  const { registry } = useStore();
   const support = serialSupport();
 
-  const [build, setBuild] = useState<FlashBuild | undefined>(undefined);
+  const [build, setBuild] = useState<WebBuild | undefined>(undefined);
   const [report, setReport] = useState<PreflightReport | undefined>(undefined);
   const [chosenBoard, setChosenBoard] = useState<string | undefined>(undefined);
   const [chipName, setChipName] = useState<string | undefined>(undefined);
@@ -56,34 +64,19 @@ export function FlashPage() {
       .map((b) => ({ id: b.id, name: b.name }));
   };
 
-  // Only builds that ship a full-flash image can go on a blank board.
-  const flashable: FlashBuild[] = (registry?.projects ?? []).flatMap(
-    (project) =>
-      (project.releases ?? []).slice(0, 1).flatMap((release) => {
-        const raw = release as unknown as {
-          version: string;
-          builds?: {
-            target: string;
-            mergedUrl?: string;
-            mergedBytes?: number;
-            boardId?: string;
-            unsigned?: boolean;
-          }[];
-        };
-        return (raw.builds ?? [])
-          .filter((b) => b.mergedUrl !== undefined)
-          .map((b) => ({
-            projectId: project.id,
-            projectName: project.name,
-            version: raw.version,
-            target: b.target as Target,
-            mergedUrl: b.mergedUrl as string,
-            mergedBytes: b.mergedBytes,
-            boardId: b.boardId,
-            unsigned: b.unsigned,
-          }));
-      }),
+  // Only builds that ship a full-flash image can go on a blank board, and a
+  // web page can only download one from a mirror that sends CORS headers:
+  // GitHub's own release downloads do not, so `mergedUrl` always fails here.
+  const offered = defaultBuilds(
+    (registry?.projects ?? []) as unknown as CatalogueProject[],
   );
+  const flashable = offered.filter(
+    (b): b is WebBuild => b.mergedWebUrl !== undefined,
+  );
+  const downloadOnly = offered.filter((b) => b.mergedWebUrl === undefined);
+  const label = (b: FlashBuild): string =>
+    `${b.projectName} ${b.version}${isPrerelease(b) ? " (prerelease)" : ""} · ` +
+    (b.boardName ?? b.target);
 
   if (!support.supported) {
     return (
@@ -115,7 +108,7 @@ export function FlashPage() {
 
   /** Re-run the checks against the board already connected. */
   const runChecks = (
-    chosen: FlashBuild,
+    chosen: WebBuild,
     imageHead: Uint8Array,
     board: string | undefined,
   ) => {
@@ -136,7 +129,7 @@ export function FlashPage() {
     );
   };
 
-  const onConnect = async (chosen: FlashBuild) => {
+  const onConnect = async (chosen: WebBuild) => {
     setError(undefined);
     setBusy(true);
     try {
@@ -146,7 +139,7 @@ export function FlashPage() {
 
       // Fetch only the head first: enough to tell a full-flash image from an
       // update image without pulling 15 MB to find out.
-      const head = await fetch(chosen.mergedUrl, {
+      const head = await fetch(chosen.mergedWebUrl, {
         headers: { Range: "bytes=0-65535" },
       });
       if (!head.ok) {
@@ -170,7 +163,7 @@ export function FlashPage() {
     setBusy(true);
     setError(undefined);
     try {
-      const response = await fetch(build.mergedUrl);
+      const response = await fetch(build.mergedWebUrl);
       if (!response.ok)
         throw new Error(`Download failed: HTTP ${response.status}`);
       const image = await response.arrayBuffer();
@@ -241,8 +234,6 @@ export function FlashPage() {
         <p class="muted small">
           For a board that has never been on your network. Connect it by USB,
           pick the firmware, and this writes it directly.
-          {mirror?.mode === "mirror" &&
-            " Firmware already on this server is used when possible."}
         </p>
       </div>
 
@@ -257,27 +248,48 @@ export function FlashPage() {
           <h3>Choose firmware</h3>
           {flashable.length === 0 ? (
             <p class="muted">
-              No project publishes a full-flash image yet. Only those can be
-              written to a blank board.
+              No project publishes a full-flash image this page can download
+              yet.
             </p>
           ) : (
             <ul class="projects">
               {flashable.map((candidate) => (
-                <li key={`${candidate.projectId}-${candidate.target}`}>
+                <li
+                  key={`${candidate.projectId}-${candidate.target}-${candidate.boardId ?? ""}`}
+                >
                   <button
                     onClick={() => {
                       setBuild(candidate);
                       void onConnect(candidate);
                     }}
                   >
-                    {candidate.projectName} {candidate.version} ·{" "}
-                    {candidate.target}
+                    {label(candidate)}
                     {candidate.mergedBytes !== undefined &&
                       ` · ${mb(candidate.mergedBytes)}`}
                   </button>
                 </li>
               ))}
             </ul>
+          )}
+          {downloadOnly.length > 0 && (
+            <>
+              <p class="muted small">
+                These projects do not publish a copy of their firmware that a
+                web page may download. Download the image and write it with{" "}
+                <code>esptool</code> instead.
+              </p>
+              <ul class="projects">
+                {downloadOnly.map((candidate) => (
+                  <li
+                    key={`${candidate.projectId}-${candidate.target}-${candidate.boardId ?? ""}`}
+                  >
+                    <a href={candidate.mergedUrl} rel="noreferrer">
+                      {label(candidate)}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </>
           )}
         </div>
       ) : (

@@ -12,6 +12,7 @@
 import { describe, expect, it } from "vitest";
 import {
   allBuilds,
+  defaultBuilds,
   boardCatalogue,
   targetsInCatalogue,
   type CatalogueProject,
@@ -777,5 +778,148 @@ describe("allBuilds", () => {
     };
     // An OTA image cannot start a blank board, which is all this page does.
     expect(allBuilds([otaOnly])).toEqual([]);
+  });
+});
+
+/**
+ * The single default per board, for the plugin's own flash page: the newest
+ * stable release, never a newer prerelease.
+ */
+describe("defaultBuilds", () => {
+  const release = (version: string, channel: string, web = true) => ({
+    version,
+    channel,
+    builds: [
+      {
+        target: "esp32c6",
+        boardId: "c6",
+        mergedUrl: `https://github.invalid/${version}.bin`,
+        ...(web ? { mergedWebUrl: `https://raw.invalid/${version}.bin` } : {}),
+      },
+    ],
+  });
+  const project = (
+    releases: ReturnType<typeof release>[],
+  ): CatalogueProject => ({
+    id: "p",
+    name: "P",
+    repo: "example/p",
+    boards: [{ id: "c6", target: "esp32c6", name: "C6" }],
+    releases,
+  });
+
+  it("offers the newest stable release, not a newer beta", () => {
+    const picked = defaultBuilds([
+      project([release("1.1.0-beta.1", "beta"), release("1.0.0", "stable")]),
+    ]);
+    expect(picked.map((b) => b.version)).toEqual(["1.0.0"]);
+  });
+
+  it("offers the newest prerelease when nothing stable exists", () => {
+    const picked = defaultBuilds([
+      project([
+        release("0.2.0-beta.2", "beta"),
+        release("0.2.0-beta.1", "beta"),
+      ]),
+    ]);
+    expect(picked.map((b) => b.version)).toEqual(["0.2.0-beta.2"]);
+  });
+
+  it("keeps the web URL, or its absence, for the page to act on", () => {
+    const picked = defaultBuilds([
+      project([release("1.0.0", "stable", false)]),
+    ]);
+    expect(picked).toHaveLength(1);
+    expect(picked[0]?.mergedWebUrl).toBeUndefined();
+    expect(picked[0]?.mergedUrl).toBe("https://github.invalid/1.0.0.bin");
+  });
+
+  it("gives each board of a project its own default", () => {
+    const twoBoards: CatalogueProject = {
+      id: "t",
+      name: "T",
+      repo: "example/t",
+      boards: [
+        { id: "7b", target: "esp32p4", name: "7B" },
+        { id: "x7", target: "esp32p4", name: "X7" },
+      ],
+      releases: [
+        {
+          version: "1.4.0",
+          channel: "stable",
+          builds: ["7b", "x7"].map((b) => ({
+            target: "esp32p4",
+            boardId: b,
+            mergedUrl: `https://github.invalid/${b}.bin`,
+            mergedWebUrl: `https://raw.invalid/${b}.bin`,
+          })),
+        },
+      ],
+    };
+    const picked = defaultBuilds([twoBoards]);
+    expect(picked.map((b) => b.boardId).sort()).toEqual(["7b", "x7"]);
+  });
+
+  it("gives a board one default when a chip-wide image resolves to it", () => {
+    // One board on the chip, so the board-agnostic prerelease image is offered
+    // for that board -- beside the stable build that names it.
+    const mixed: CatalogueProject = {
+      id: "m",
+      name: "M",
+      repo: "example/m",
+      boards: [{ id: "c6", target: "esp32c6", name: "C6" }],
+      releases: [
+        {
+          version: "1.1.0-beta.1",
+          channel: "beta",
+          builds: [
+            {
+              target: "esp32c6",
+              mergedUrl: "https://github.invalid/beta.bin",
+              mergedWebUrl: "https://raw.invalid/beta.bin",
+            },
+          ],
+        },
+        {
+          version: "1.0.0",
+          channel: "stable",
+          builds: [
+            {
+              target: "esp32c6",
+              boardId: "c6",
+              mergedUrl: "https://github.invalid/1.0.0.bin",
+              mergedWebUrl: "https://raw.invalid/1.0.0.bin",
+            },
+          ],
+        },
+      ],
+    };
+    const picked = defaultBuilds([mixed]);
+    expect(picked.map((b) => b.version)).toEqual(["1.0.0"]);
+  });
+
+  it("gives a project without boards one default per chip", () => {
+    const boardless: CatalogueProject = {
+      id: "b",
+      name: "B",
+      repo: "example/b",
+      releases: [
+        {
+          version: "2.0.0-beta.1",
+          channel: "beta",
+          builds: [
+            { target: "esp32", mergedUrl: "https://github.invalid/b.bin" },
+          ],
+        },
+        {
+          version: "1.0.0",
+          channel: "stable",
+          builds: [
+            { target: "esp32", mergedUrl: "https://github.invalid/s.bin" },
+          ],
+        },
+      ],
+    };
+    expect(defaultBuilds([boardless]).map((b) => b.version)).toEqual(["1.0.0"]);
   });
 });
