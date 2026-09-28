@@ -15,7 +15,7 @@
  * are always written together.
  */
 
-import type { DeviceClient } from "../device/client.js";
+import { DeviceUnreachableError, type DeviceClient } from "../device/client.js";
 import type { AppName, Channel } from "../types.js";
 import { manifestPathFor, manifestUrlFits } from "../mirror/manifest.js";
 
@@ -32,11 +32,21 @@ export interface ConfigureOtaOptions {
   origin?: string;
   /** Leave auto-install alone unless explicitly set. */
   autoInstall?: boolean;
+  /**
+   * Wait before the one retry after the device did not answer. A device
+   * listed as online may be mid-reboot -- just flashed, or restarting after a
+   * config change -- and answers a few seconds later.
+   */
+  retryDelayMs?: number;
 }
 
 export interface ConfigureOtaResult {
   manifestPath: string;
-  /** Config keys the device reports it actually changed. */
+  /**
+   * Config keys the accepted write reports changing. Empty when an earlier
+   * write took effect but its reply was lost, so there was nothing left to
+   * write; `applied` is the authority on the resulting config.
+   */
   changed: string[];
   /** The device needs a restart for the change to take effect. */
   restartRequired: boolean;
@@ -44,8 +54,42 @@ export interface ConfigureOtaResult {
   applied: {
     manifestSrc?: string;
     manifestPath?: string;
+    manifestUrl?: string;
     channel?: string;
   };
+}
+
+const DEFAULT_RETRY_DELAY_MS = 3000;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** A last attempt: a device that still does not answer gets the advice. */
+async function lastAttempt<T>(request: () => Promise<T>): Promise<T> {
+  try {
+    return await request();
+  } catch (error) {
+    if (!(error instanceof DeviceUnreachableError)) throw error;
+    throw new Error(
+      `${error.message} — if it has just been flashed or restarted, give it ` +
+        `a few seconds and try again`,
+      { cause: error },
+    );
+  }
+}
+
+async function retryOnceIfUnreachable<T>(
+  request: () => Promise<T>,
+  delayMs: number,
+): Promise<T> {
+  try {
+    return await request();
+  } catch (error) {
+    if (!(error instanceof DeviceUnreachableError)) throw error;
+  }
+  await sleep(delayMs);
+  return lastAttempt(request);
 }
 
 /**
@@ -80,12 +124,44 @@ export async function configureOta(
     ota.auto_install = options.autoInstall;
   }
 
-  const write = await options.client.putConfig({ ota });
+  // Requests are retried only when the device did not answer at all. An HTTP
+  // error is the device's considered answer; asking again would only repeat
+  // it.
+  const retryDelayMs = options.retryDelayMs ?? DEFAULT_RETRY_DELAY_MS;
+  const holdsRequested = (config: Record<string, unknown>): boolean => {
+    const current = (config.ota ?? {}) as Record<string, unknown>;
+    return Object.entries(ota).every(([key, value]) => current[key] === value);
+  };
 
+  let write: { changed: string[]; restartRequired: boolean };
+  let seen: Record<string, unknown> | undefined;
+  try {
+    write = await options.client.putConfig({ ota });
+  } catch (error) {
+    if (!(error instanceof DeviceUnreachableError)) throw error;
+    await sleep(retryDelayMs);
+    // The write may have taken effect with only its reply lost. Look before
+    // sending it again, so a change that landed is not repeated.
+    seen = await retryOnceIfUnreachable(
+      () => options.client.getConfig(),
+      retryDelayMs,
+    );
+    if (holdsRequested(seen)) {
+      write = { changed: [], restartRequired: false };
+    } else {
+      write = await lastAttempt(() => options.client.putConfig({ ota }));
+      seen = undefined; // read before this write, so stale now
+    }
+  }
   // A key that already held the right value is legitimately absent from
   // `changed`, so the write report alone cannot confirm the outcome — read the
   // config back and compare against what was asked for.
-  const after = await options.client.getConfig();
+  const after =
+    seen ??
+    (await retryOnceIfUnreachable(
+      () => options.client.getConfig(),
+      retryDelayMs,
+    ));
   const applied = (after.ota ?? {}) as Record<string, unknown>;
   const appliedPath =
     typeof applied.manifest_path === "string"
@@ -108,6 +184,10 @@ export async function configureOta(
     applied: {
       manifestSrc: appliedSrc,
       manifestPath: appliedPath,
+      manifestUrl:
+        typeof applied.manifest_url === "string"
+          ? applied.manifest_url
+          : undefined,
       channel:
         typeof applied.channel === "string" ? applied.channel : undefined,
     },

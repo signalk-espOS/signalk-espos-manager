@@ -167,6 +167,19 @@ export class FleetState {
   }
 
   /**
+   * Take a device's OTA config as just written and read back, so the repair
+   * warning clears now rather than at the next poll, up to a minute later.
+   * An operator who clicks "Fix this" and still sees the warning reads it as
+   * the fix having failed.
+   */
+  setOtaConfig(id: DeviceId, otaConfig: DeviceSnapshot["otaConfig"]): void {
+    const snapshot = this.devices.get(id)?.snapshot;
+    if (snapshot === undefined) return;
+    snapshot.otaConfig = otaConfig;
+    this.notify();
+  }
+
+  /**
    * Record a failed probe. Note this does NOT clear the last good snapshot:
    * an offline device should still show which firmware it was running, so an
    * update can be queued for when it comes back.

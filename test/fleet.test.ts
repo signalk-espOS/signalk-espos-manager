@@ -18,7 +18,12 @@ import {
   shouldForget,
 } from "../src/fleet/state.js";
 import { isProvisionalId, provisionalId } from "../src/fleet/poller.js";
-import type { DeviceIdentity, DeviceSnapshot } from "../src/types.js";
+import { serializeDevice } from "../src/api/serialize.js";
+import type {
+  DeviceIdentity,
+  DeviceRecord,
+  DeviceSnapshot,
+} from "../src/types.js";
 
 const WINDOWS = { pollIntervalS: 60, offlineAfterS: 180 };
 const NOW = 1_758_400_000_000;
@@ -165,6 +170,40 @@ describe("FleetState", () => {
     expect(record?.snapshot?.version).toBe("1.2.0");
     expect(record?.consecutiveFailures).toBe(1);
     expect(record?.lastError).toMatch(/ECONNREFUSED/);
+  });
+
+  it("clears the repair warning as soon as the device is configured", () => {
+    // After "Fix this" succeeds the warning must go at once; waiting for the
+    // next poll (up to a minute) left it on screen, which reads as failure.
+    const fleet = new FleetState();
+    fleet.applyIdentities(new Map([["2be9", identity("2be9")]]), NOW);
+    fleet.recordSuccess(
+      "2be9",
+      {
+        ...snapshot(),
+        ota: { state: "idle", manifest: { url: "", channel: "stable" } },
+        otaConfig: {
+          manifestSrc: "url",
+          manifestUrl: "",
+          manifestPath: "/plugins/signalk-espos-updates/manifest.json",
+        },
+      } as DeviceSnapshot,
+      "open",
+      NOW,
+    );
+    const record = (): DeviceRecord => {
+      const r = fleet.get("2be9");
+      if (r === undefined) throw new Error("device vanished");
+      return r;
+    };
+    expect(serializeDevice(record()).otaNeedsRepair).toBe(true);
+
+    fleet.setOtaConfig("2be9", {
+      manifestSrc: "signalk",
+      manifestPath: "/signalk-espos-manager/fw/cockpit/manifest.json",
+      manifestUrl: "",
+    });
+    expect(serializeDevice(record()).otaNeedsRepair).toBe(false);
   });
 
   it("does not treat a failed probe as a sighting", () => {

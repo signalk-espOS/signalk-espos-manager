@@ -19,7 +19,16 @@ function uptime(seconds: number | undefined): string | undefined {
 }
 
 export function DevicePage() {
-  const { fleet, selectedDevice, available, jobs, go, act } = useStore();
+  const {
+    fleet,
+    selectedDevice,
+    available,
+    jobs,
+    go,
+    act,
+    acting,
+    inlineErrors,
+  } = useStore();
   const [key, setKey] = useState("");
 
   const device = fleet?.devices.find((d) => d.id === selectedDevice);
@@ -32,6 +41,11 @@ export function DevicePage() {
     );
   }
 
+  // Keyed by device id, so a fix still running when the operator opens another
+  // device neither shows as busy there nor lands its error on that card. The
+  // button stays disabled while this device's fix runs, so it cannot be sent
+  // twice.
+  const fixOtaKey = `configure-ota:${device.id}`;
   const offer = available[device.id];
   const job = jobs?.jobs.find((j) => j.deviceId === device.id);
   const busy = job !== undefined && !isJobFinished(job);
@@ -151,14 +165,24 @@ export function DevicePage() {
           <h3>Not set up for updates</h3>
           <p class="muted small">{device.otaRepairReason}</p>
           <button
+            disabled={acting.includes(fixOtaKey)}
             onClick={() =>
-              void act("Point this device at the server", () =>
-                api.configureOta(device.id),
+              void act(
+                `Point ${device.hostname ?? device.id} at the server`,
+                () => api.configureOta(device.id),
+                { errorInline: true, key: fixOtaKey },
               )
             }
           >
-            Fix this
+            {acting.includes(fixOtaKey)
+              ? "Pointing it at the server…"
+              : "Fix this"}
           </button>
+          {inlineErrors[fixOtaKey] !== undefined && (
+            <p class="warn-text small" role="alert">
+              Did not work: {inlineErrors[fixOtaKey]}
+            </p>
+          )}
         </div>
       )}
 

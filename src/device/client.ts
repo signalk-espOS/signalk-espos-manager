@@ -32,6 +32,38 @@ export class DeviceHttpError extends Error {
   }
 }
 
+/**
+ * The device never answered: refused, reset, unreachable or timed out.
+ *
+ * Kept apart from DeviceHttpError because the remedy differs. A device that
+ * answered said what is wrong; one that did not is usually rebooting -- it was
+ * just flashed, or it restarts after a config change -- and the same request
+ * succeeds seconds later. Node's own message for all of these is a bare
+ * "fetch failed", with the reason buried in `cause`.
+ */
+export class DeviceUnreachableError extends Error {
+  constructor(
+    message: string,
+    /** ECONNREFUSED, ECONNRESET, EHOSTUNREACH, "timeout", ... */
+    readonly code: string,
+  ) {
+    super(message);
+    this.name = "DeviceUnreachableError";
+  }
+}
+
+function unreachableCode(error: unknown, aborted: boolean): string {
+  // The socket's own code first: the timer can fire while a reset is already
+  // settling, and "timeout" would then hide the real reason.
+  const cause = (error as { cause?: unknown } | undefined)?.cause;
+  const code = (cause as { code?: unknown } | undefined)?.code;
+  if (typeof code === "string" && code !== "") return code;
+  if (aborted || (error instanceof Error && error.name === "AbortError")) {
+    return "timeout";
+  }
+  return error instanceof Error ? error.message : String(error);
+}
+
 export interface DeviceClientOptions {
   address: string;
   port?: number;
@@ -85,12 +117,22 @@ export class DeviceClient {
       if (init?.body !== undefined) {
         headers["Content-Type"] = "application/json";
       }
-      const response = await this.fetchImpl(`${this.base}${path}`, {
-        method: init?.method ?? "GET",
-        headers,
-        body: init?.body === undefined ? undefined : JSON.stringify(init.body),
-        signal: controller.signal,
-      });
+      let response: Response;
+      try {
+        response = await this.fetchImpl(`${this.base}${path}`, {
+          method: init?.method ?? "GET",
+          headers,
+          body:
+            init?.body === undefined ? undefined : JSON.stringify(init.body),
+          signal: controller.signal,
+        });
+      } catch (error) {
+        const code = unreachableCode(error, controller.signal.aborted);
+        throw new DeviceUnreachableError(
+          `the device did not answer ${path} (${code})`,
+          code,
+        );
+      }
       if (!response.ok) {
         // espOS answers a rejected config with {"error","path","message"} --
         // an unknown key, which is what firmware too old for a setting says.
@@ -119,7 +161,18 @@ export class DeviceClient {
         );
       }
       if (response.status === 204) return undefined;
-      const text = await response.text();
+      let text: string;
+      try {
+        text = await response.text();
+      } catch (error) {
+        // The device went away mid-reply -- the same reboot as a refused
+        // connection, only a moment later.
+        const code = unreachableCode(error, controller.signal.aborted);
+        throw new DeviceUnreachableError(
+          `the device stopped answering ${path} (${code})`,
+          code,
+        );
+      }
       if (text.trim() === "") return undefined;
       return JSON.parse(text) as unknown;
     } finally {
