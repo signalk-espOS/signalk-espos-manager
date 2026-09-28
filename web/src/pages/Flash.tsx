@@ -77,6 +77,20 @@ export function FlashPage() {
   const label = (b: FlashBuild): string =>
     `${b.projectName} ${b.version}${isPrerelease(b) ? " (prerelease)" : ""} · ` +
     (b.boardName ?? b.target);
+  /** Plain links to the release images, for writing them with esptool. */
+  const downloadLinks = (builds: FlashBuild[]) => (
+    <ul class="projects">
+      {builds.map((candidate) => (
+        <li
+          key={`${candidate.projectId}-${candidate.target}-${candidate.boardId ?? ""}`}
+        >
+          <a href={candidate.mergedUrl} rel="noreferrer">
+            {label(candidate)}
+          </a>
+        </li>
+      ))}
+    </ul>
+  );
 
   if (!support.supported) {
     return (
@@ -101,6 +115,17 @@ export function FlashPage() {
             You can also download the firmware and write it with{" "}
             <code>esptool</code> from a terminal.
           </p>
+        )}
+        {/* This page cannot flash, and the hosted flasher needs a browser
+            with USB access too, so the images themselves are always offered:
+            a link is a normal download, which needs no CORS. */}
+        {offered.length > 0 && (
+          <>
+            <p class="muted small">
+              Or download an image and write it with <code>esptool</code>:
+            </p>
+            {downloadLinks(offered)}
+          </>
         )}
       </div>
     );
@@ -278,17 +303,7 @@ export function FlashPage() {
                 web page may download. Download the image and write it with{" "}
                 <code>esptool</code> instead.
               </p>
-              <ul class="projects">
-                {downloadOnly.map((candidate) => (
-                  <li
-                    key={`${candidate.projectId}-${candidate.target}-${candidate.boardId ?? ""}`}
-                  >
-                    <a href={candidate.mergedUrl} rel="noreferrer">
-                      {label(candidate)}
-                    </a>
-                  </li>
-                ))}
-              </ul>
+              {downloadLinks(downloadOnly)}
             </>
           )}
         </div>

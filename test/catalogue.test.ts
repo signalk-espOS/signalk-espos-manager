@@ -922,4 +922,35 @@ describe("defaultBuilds", () => {
     };
     expect(defaultBuilds([boardless]).map((b) => b.version)).toEqual(["1.0.0"]);
   });
+
+  it("skips a release that ships two images for one chip without boards", () => {
+    // Board variants the project never declared: nothing can say which image
+    // fits which board, so neither is offered and the default falls back.
+    const variants: CatalogueProject = {
+      id: "v",
+      name: "V",
+      repo: "example/v",
+      releases: [
+        {
+          version: "2.0.0",
+          channel: "stable",
+          builds: ["a", "b"].map((seg) => ({
+            target: "esp32p4",
+            mergedUrl: `https://github.invalid/2.0.0-${seg}.bin`,
+          })),
+        },
+        {
+          version: "1.0.0",
+          channel: "stable",
+          builds: [
+            {
+              target: "esp32p4",
+              mergedUrl: "https://github.invalid/1.0.0.bin",
+            },
+          ],
+        },
+      ],
+    };
+    expect(defaultBuilds([variants]).map((b) => b.version)).toEqual(["1.0.0"]);
+  });
 });

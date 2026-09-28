@@ -554,9 +554,21 @@ export function defaultBuilds(projects: CatalogueProject[]): FlashBuild[] {
     }
   }
   const boardless = projects.filter((p) => (p.boards ?? []).length === 0);
+  const builds = allBuilds(boardless);
+  // A release with two images for one chip ships board variants the project
+  // never declared, so nothing here can say which one fits: offering either
+  // could write one panel's firmware to the other. Such a release is skipped
+  // and the default falls to the newest release that is unambiguous.
+  const release = (b: FlashBuild): string =>
+    `${b.projectId}\u0000${b.target}\u0000${b.version}`;
+  const perRelease = new Map<string, number>();
+  for (const build of builds) {
+    perRelease.set(release(build), (perRelease.get(release(build)) ?? 0) + 1);
+  }
   const perChip = new Map<string, FlashBuild>();
   // allBuilds lists each project newest first.
-  for (const build of allBuilds(boardless)) {
+  for (const build of builds) {
+    if ((perRelease.get(release(build)) ?? 0) > 1) continue;
     const key = `${build.projectId}\u0000${build.target}`;
     const current = perChip.get(key);
     if (
