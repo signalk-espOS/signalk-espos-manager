@@ -53,6 +53,20 @@ it was originally flashed with, so switching a device from one project to
 another is a USB operation, not an over-the-air one. The plugin says so rather
 than offering an update that would be refused after the download.
 
+## Two different keys
+
+- **The signing key** belongs to whoever publishes a firmware project. They
+  sign each release with it, and a device only installs updates signed with
+  the key it was flashed with. Lose it and every device needs a USB reflash.
+  The registry only records its fingerprint (`signingKeyId`), so the plugin
+  can tell an update that would be refused; it never signs or checks
+  firmware itself. A developer's own build signs with a key generated in
+  their checkout, which only their own devices accept.
+- **The fleet API key** (`auth.fleetKey`) is the password this plugin uses
+  to talk to your devices' web API (`httpd.api_key` on the device). It has
+  nothing to do with firmware. Changing it only means telling the plugin and
+  the devices the new one.
+
 ## Privacy and network use
 
 The plugin talks to devices on your own network and fetches the project

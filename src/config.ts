@@ -104,7 +104,8 @@ export const AuthSchema = Type.Object(
       description:
         "One key for every espOS device on this boat. Devices that ask for " +
         "a key are contacted with it; devices that use a different key can " +
-        "be given their own below. Leave empty if no device has a key set.",
+        "be given their own below. Leave empty if no device has a key set. " +
+        "This is the devices' web login, not a firmware signing key.",
     }),
     autoProvision: Type.Boolean({
       title: "Set the fleet key on open devices",
