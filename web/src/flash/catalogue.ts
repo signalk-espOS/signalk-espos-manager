@@ -92,6 +92,8 @@ export interface CatalogueProject {
   repo: string;
   official?: boolean;
   deprecated?: boolean | string;
+  /** False: every build is made with a throwaway key (USB only). */
+  signed?: boolean;
   boards?: CatalogueBoard[];
   releases?: CatalogueRelease[];
 }
@@ -231,7 +233,7 @@ function toBuild(
     mergedWebUrl: b.mergedWebUrl,
     mergedBytes: b.mergedBytes,
     boardId: b.boardId,
-    unsigned: b.unsigned,
+    unsigned: b.unsigned === true || project.signed === false || undefined,
     channel: release.channel,
     espos: release.espos,
     /* Empty means "no board to name" -- allBuilds() passes a placeholder board
