@@ -17,6 +17,7 @@ import { RegistryClient, type IndexResult } from "./registry/client.js";
 import { OtaOrchestrator } from "./ota/orchestrator.js";
 import type { JobView } from "./ota/job.js";
 import { DeviceClient } from "./device/client.js";
+import { provisionFleetKey } from "./device/provision.js";
 import { matchDevice, projectForApp } from "./registry/resolve.js";
 import {
   firmwareUrlFor,
@@ -36,6 +37,9 @@ export class ManagerService {
   private poller?: FleetPoller;
   private settings?: ManagerSettings;
   private started = false;
+  /** Devices auto-provisioning gave up on; one try each per plugin start. */
+  private provisionTried = new Set<string>();
+  private provisioning = false;
   private store?: FirmwareStore;
   private registry?: RegistryClient;
   private registryState?: IndexResult;
@@ -109,6 +113,7 @@ export class ManagerService {
         },
         onCycle: () => {
           this.report();
+          void this.provisionOpenDevices();
         },
       });
       await this.poller.start();
@@ -121,6 +126,7 @@ export class ManagerService {
 
   async stop(): Promise<void> {
     this.started = false;
+    this.provisionTried.clear();
     // Pause before discarding: a queued job left running would keep polling a
     // device, and calling report() on a stopped plugin, long after the user
     // disabled it. A job already writing flash is deliberately NOT interrupted
@@ -259,6 +265,51 @@ export class ManagerService {
     // do with whether the mount serves, and the probe would then report a
     // working mirror as broken. The plain listener keeps running alongside.
     return `http://127.0.0.1:${port}`;
+  }
+
+  /**
+   * `auth.autoProvision`: give every open device the fleet key. Runs after a
+   * poll cycle, never alongside another run, and tries a device once per
+   * plugin start -- a device that refused once will refuse every minute, and
+   * the log line saying why is enough.
+   */
+  private async provisionOpenDevices(): Promise<void> {
+    const settings = this.settings;
+    if (
+      !this.started ||
+      this.provisioning ||
+      settings === undefined ||
+      !settings.auth.autoProvision ||
+      settings.auth.fleetKey === ""
+    ) {
+      return;
+    }
+    this.provisioning = true;
+    try {
+      for (const device of this.fleet.list()) {
+        const id = device.identity.id;
+        if (device.auth !== "open" || device.reachability !== "online")
+          continue;
+        if (this.provisionTried.has(id)) continue;
+        const client = this.clientFor(id);
+        if (client === undefined) continue;
+        this.provisionTried.add(id);
+        const outcome = await provisionFleetKey(client, settings.auth.fleetKey);
+        if (outcome.result === "provisioned") {
+          // The next poll sees auth required and answers with the fleet key.
+          this.provisionTried.delete(id);
+          this.fleet.setAuth(id, "authorized");
+          this.app.debug(`${id}: fleet key set on an open device`);
+        } else {
+          this.app.debug(`${id}: fleet key not set: ${outcome.reason}`);
+        }
+      }
+    } catch (error) {
+      this.app.debug(`auto-provisioning failed: ${String(error)}`);
+    } finally {
+      this.provisioning = false;
+    }
+    this.report();
   }
 
   /** A client for one device, with its key attached when we have one. */
