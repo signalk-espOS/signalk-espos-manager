@@ -267,6 +267,27 @@ describe("matchDevice", () => {
     expect(result.reason).toMatch(/unsigned/);
   });
 
+  it("treats every build of a signed:false project as unsigned", () => {
+    // An index written before the registry copied the flag onto each build
+    // carries it only on the project; the device still rejects the OTA.
+    const result = matchDevice(
+      { ...cockpit, signed: false },
+      { ...base, runningVersion: "1.0.0" },
+    );
+    expect(result.build?.unsigned).toBe(true);
+    expect(result.requiresUsb).toBe(true);
+    expect(result.reason).toMatch(/unsigned/);
+  });
+
+  it("matches the signing key fingerprint regardless of case", () => {
+    const result = matchDevice(cockpit, {
+      ...base,
+      runningVersion: "1.1.0",
+      keyFp: "0BADC0FFEE123456",
+    });
+    expect(result.requiresUsb).toBe(false);
+  });
+
   it("reports a release that ships no OTA image", () => {
     const mergedOnly: RegistryProject = {
       ...cockpit,

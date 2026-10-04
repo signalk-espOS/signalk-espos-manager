@@ -10,6 +10,7 @@
  */
 
 import { compareVersions, isReleaseVersion } from "../mirror/manifest.js";
+import { isUnsignedBuild } from "./unsigned.js";
 import type { AppName, Channel, Target } from "../types.js";
 import type {
   RegistryBoard,
@@ -238,7 +239,7 @@ export function matchDevice(
       notes: release.notes,
       notesUrl: release.notesUrl,
       publishedAt: release.publishedAt,
-      unsigned: build.unsigned,
+      unsigned: isUnsignedBuild(project, build) || undefined,
     };
 
     // A device only accepts an image signed with the key it was flashed with,
@@ -247,15 +248,15 @@ export function matchDevice(
     const keyMismatch =
       options.keyFp !== undefined &&
       project.signingKeyId !== undefined &&
-      options.keyFp !== project.signingKeyId;
+      options.keyFp.toLowerCase() !== project.signingKeyId.toLowerCase();
 
     return {
       build: resolved,
-      requiresUsb: keyMismatch || build.unsigned === true,
+      requiresUsb: keyMismatch || resolved.unsigned === true,
       reason: keyMismatch
         ? "this device trusts a different signing key, so the update must be " +
           "flashed over USB"
-        : build.unsigned === true
+        : resolved.unsigned === true
           ? "this build is unsigned and will not be accepted over the air"
           : undefined,
       // A git-describe running version compares below its own release, so the
