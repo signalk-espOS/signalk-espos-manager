@@ -29,17 +29,20 @@ export type ProvisionOutcome =
 /**
  * `client` must carry no key: a device that gained one since the ping then
  * answers 401 to a request with no credential, instead of counting a wrong
- * key towards its 5-in-60 s lockout.
+ * key towards its 5-in-60 s lockout. `stillCurrent` is asked after the ping,
+ * which can take seconds, so a stop or settings change during it never
+ * writes the old key.
  */
 export async function provisionFleetKey(
   client: DeviceClient,
   rawKey: string,
+  stillCurrent: () => boolean = () => true,
 ): Promise<ProvisionOutcome> {
   const fleetKey = rawKey.trim();
   if (!fleetKeyUsable(fleetKey)) {
     return {
       result: "skipped",
-      reason: "the fleet key must be 8 to 64 characters",
+      reason: "the fleet key must be 8 to 64 bytes",
     };
   }
   // Re-ask right before writing: the poll that reported this device open may
@@ -52,6 +55,9 @@ export async function provisionFleetKey(
   }
   if (ping.authRequired) {
     return { result: "skipped", reason: "the device already has a key" };
+  }
+  if (!stillCurrent()) {
+    return { result: "skipped", reason: "provisioning was cancelled" };
   }
   try {
     const { changed } = await client.putConfig({

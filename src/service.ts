@@ -319,7 +319,13 @@ export class ManagerService {
           address,
           port: device.identity.port,
         });
-        const outcome = await provisionFleetKey(client, settings.auth.fleetKey);
+        const outcome = await provisionFleetKey(
+          client,
+          settings.auth.fleetKey,
+          () => this.started && generation === this.generation,
+        );
+        // Cancelled mid-write: not a refusal, so leave it untried.
+        if (!this.started || generation !== this.generation) return;
         if (outcome.result === "provisioned") {
           changed = true;
           this.app.debug(`${id}: fleet key set on an open device`);

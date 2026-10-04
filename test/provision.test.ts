@@ -85,6 +85,18 @@ describe("provisionFleetKey", () => {
     expect(device.key()).toBe("owners-own-key");
   });
 
+  it("does not write once the run was cancelled during the ping", async () => {
+    const device = await startDevice();
+    const outcome = await provisionFleetKey(
+      device.client,
+      "boat-fleet-key",
+      () => false,
+    );
+    expect(outcome.result).toBe("skipped");
+    expect(device.puts()).toBe(0);
+    expect(device.key()).toBe("");
+  });
+
   it("refuses a key espOS would not accept", async () => {
     const device = await startDevice();
     const outcome = await provisionFleetKey(device.client, "short");
