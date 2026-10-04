@@ -58,9 +58,10 @@ than offering an update that would be refused after the download.
 - **The signing key** belongs to whoever publishes a firmware project. They
   sign each release with it, and a device only installs updates signed with
   the key it was flashed with. Lose it and every device needs a USB reflash.
-  The registry only records its fingerprint (`signingKeyId`), so the plugin
-  can tell an update that would be refused; it never signs or checks
-  firmware itself. A developer's own build signs with a key generated in
+  The registry only records its fingerprint (`signingKeyId`). When both the
+  registry and the device report a fingerprint, the plugin can tell an update
+  the device would refuse; it never signs or checks firmware itself. A
+  developer's own build signs with a key generated in
   their checkout, which only their own devices accept.
 - **The fleet API key** (`auth.fleetKey`) is the password this plugin uses
   to talk to your devices' web API (`httpd.api_key` on the device). It has
