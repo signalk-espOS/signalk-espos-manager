@@ -42,6 +42,7 @@
  * flasher that orders versions differently from the device that installs them
  * is a bug waiting to happen. */
 import { compareVersions } from "../../../src/mirror/version.js";
+import { isUnsignedBuild } from "../../../src/registry/unsigned.js";
 import type { FlashBuild, Target } from "./types.js";
 
 /** The subset of the registry index this module reads. */
@@ -233,7 +234,7 @@ function toBuild(
     mergedWebUrl: b.mergedWebUrl,
     mergedBytes: b.mergedBytes,
     boardId: b.boardId,
-    unsigned: b.unsigned === true || project.signed === false || undefined,
+    unsigned: isUnsignedBuild(project, b) || undefined,
     channel: release.channel,
     espos: release.espos,
     /* Empty means "no board to name" -- allBuilds() passes a placeholder board

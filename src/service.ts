@@ -17,7 +17,7 @@ import { RegistryClient, type IndexResult } from "./registry/client.js";
 import { OtaOrchestrator } from "./ota/orchestrator.js";
 import type { JobView } from "./ota/job.js";
 import { DeviceClient } from "./device/client.js";
-import { provisionFleetKey } from "./device/provision.js";
+import { fleetKeyUsable, provisionFleetKey } from "./device/provision.js";
 import { matchDevice, projectForApp } from "./registry/resolve.js";
 import {
   firmwareUrlFor,
@@ -40,6 +40,9 @@ export class ManagerService {
   /** Devices auto-provisioning gave up on; one try each per plugin start. */
   private provisionTried = new Set<string>();
   private provisioning = false;
+  private provisionKeyWarned = false;
+  /** Bumped by stop(), so a provisioning run from before it stands down. */
+  private generation = 0;
   private store?: FirmwareStore;
   private registry?: RegistryClient;
   private registryState?: IndexResult;
@@ -126,6 +129,9 @@ export class ManagerService {
 
   async stop(): Promise<void> {
     this.started = false;
+    this.generation += 1;
+    this.provisioning = false;
+    this.provisionKeyWarned = false;
     this.provisionTried.clear();
     // Pause before discarding: a queued job left running would keep polling a
     // device, and calling report() on a stopped plugin, long after the user
@@ -269,47 +275,69 @@ export class ManagerService {
 
   /**
    * `auth.autoProvision`: give every open device the fleet key. Runs after a
-   * poll cycle, never alongside another run, and tries a device once per
-   * plugin start -- a device that refused once will refuse every minute, and
-   * the log line saying why is enough.
+   * poll cycle, never alongside another run. A device that refused is tried
+   * once per plugin start -- it would refuse every minute, and the log line
+   * saying why is enough; one that did not answer is tried again next cycle.
    */
   private async provisionOpenDevices(): Promise<void> {
     const settings = this.settings;
+    const keys = this.keys;
     if (
       !this.started ||
       this.provisioning ||
       settings === undefined ||
-      !settings.auth.autoProvision ||
-      settings.auth.fleetKey === ""
+      keys === undefined ||
+      !settings.auth.autoProvision
     ) {
       return;
     }
+    if (!fleetKeyUsable(settings.auth.fleetKey)) {
+      if (!this.provisionKeyWarned) {
+        this.provisionKeyWarned = true;
+        this.app.debug(
+          "auto-provisioning is on but the fleet key is not 8-64 bytes; " +
+            "no device was changed",
+        );
+      }
+      return;
+    }
+    const generation = this.generation;
     this.provisioning = true;
+    let changed = false;
     try {
       for (const device of this.fleet.list()) {
+        // A stop() or settings change mid-run must not keep writing the old key.
+        if (!this.started || generation !== this.generation) return;
         const id = device.identity.id;
         if (device.auth !== "open" || device.reachability !== "online")
           continue;
-        if (this.provisionTried.has(id)) continue;
-        const client = this.clientFor(id);
-        if (client === undefined) continue;
-        this.provisionTried.add(id);
+        // Its stored key would win in keyFor(), locking us out of it.
+        if (keys.hasOwnKey(id) || this.provisionTried.has(id)) continue;
+        const address = device.identity.addresses[0];
+        if (address === undefined) continue;
+        const client = new DeviceClient({
+          address,
+          port: device.identity.port,
+        });
         const outcome = await provisionFleetKey(client, settings.auth.fleetKey);
         if (outcome.result === "provisioned") {
-          // The next poll sees auth required and answers with the fleet key.
-          this.provisionTried.delete(id);
-          this.fleet.setAuth(id, "authorized");
+          changed = true;
           this.app.debug(`${id}: fleet key set on an open device`);
         } else {
+          if (outcome.result !== "unreachable") this.provisionTried.add(id);
           this.app.debug(`${id}: fleet key not set: ${outcome.reason}`);
         }
       }
     } catch (error) {
       this.app.debug(`auto-provisioning failed: ${String(error)}`);
     } finally {
-      this.provisioning = false;
+      if (generation === this.generation) this.provisioning = false;
     }
-    this.report();
+    // The next poll reads the device's new auth state; report only so the
+    // log and status reflect a run that changed something.
+    if (changed && this.started && generation === this.generation) {
+      this.report();
+    }
   }
 
   /** A client for one device, with its key attached when we have one. */

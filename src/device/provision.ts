@@ -8,22 +8,34 @@
  * exposure this setting exists to close.
  */
 
-import type { DeviceClient } from "./client.js";
+import { DeviceUnreachableError, type DeviceClient } from "./client.js";
 
-/** espOS accepts 8-64 characters for httpd.api_key. */
+/**
+ * espOS accepts 8-64 bytes for httpd.api_key. Checked on the trimmed key,
+ * because that is what KeyStore authenticates with afterwards.
+ */
 export function fleetKeyUsable(key: string): boolean {
-  return key.length >= 8 && key.length <= 64;
+  const bytes = Buffer.byteLength(key.trim(), "utf8");
+  return bytes >= 8 && bytes <= 64;
 }
 
 export type ProvisionOutcome =
   | { result: "provisioned" }
   | { result: "skipped"; reason: string }
-  | { result: "failed"; reason: string };
+  | { result: "failed"; reason: string }
+  /** Did not answer: worth trying again on a later cycle. */
+  | { result: "unreachable"; reason: string };
 
+/**
+ * `client` must carry no key: a device that gained one since the ping then
+ * answers 401 to a request with no credential, instead of counting a wrong
+ * key towards its 5-in-60 s lockout.
+ */
 export async function provisionFleetKey(
   client: DeviceClient,
-  fleetKey: string,
+  rawKey: string,
 ): Promise<ProvisionOutcome> {
+  const fleetKey = rawKey.trim();
   if (!fleetKeyUsable(fleetKey)) {
     return {
       result: "skipped",
@@ -36,7 +48,7 @@ export async function provisionFleetKey(
   try {
     ping = await client.ping();
   } catch (error) {
-    return { result: "failed", reason: errorText(error) };
+    return failure(error);
   }
   if (ping.authRequired) {
     return { result: "skipped", reason: "the device already has a key" };
@@ -52,11 +64,14 @@ export async function provisionFleetKey(
       };
     }
   } catch (error) {
-    return { result: "failed", reason: errorText(error) };
+    return failure(error);
   }
   return { result: "provisioned" };
 }
 
-function errorText(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
+function failure(error: unknown): ProvisionOutcome {
+  const reason = error instanceof Error ? error.message : String(error);
+  return error instanceof DeviceUnreachableError
+    ? { result: "unreachable", reason }
+    : { result: "failed", reason };
 }

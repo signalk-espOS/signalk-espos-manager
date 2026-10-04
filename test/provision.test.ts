@@ -94,13 +94,21 @@ describe("provisionFleetKey", () => {
     expect(fleetKeyUsable("x".repeat(65))).toBe(false);
   });
 
-  it("reports an unreachable device as failed, not provisioned", async () => {
+  it("writes the trimmed key, which is what the plugin authenticates with", async () => {
+    const device = await startDevice();
+    await provisionFleetKey(device.client, "  boat-fleet-key\n");
+    expect(device.key()).toBe("boat-fleet-key");
+    expect(fleetKeyUsable("   ")).toBe(false);
+    expect(fleetKeyUsable("ä".repeat(33))).toBe(false); // 66 bytes
+  });
+
+  it("reports an unreachable device as unreachable, so it is retried", async () => {
     const client = new DeviceClient({
       address: "127.0.0.1",
       port: 1,
       timeoutMs: 500,
     });
     const outcome = await provisionFleetKey(client, "boat-fleet-key");
-    expect(outcome.result).toBe("failed");
+    expect(outcome.result).toBe("unreachable");
   });
 });

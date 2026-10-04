@@ -10,6 +10,7 @@
  */
 
 import { compareVersions, isReleaseVersion } from "../mirror/manifest.js";
+import { isUnsignedBuild } from "./unsigned.js";
 import type { AppName, Channel, Target } from "../types.js";
 import type {
   RegistryBoard,
@@ -238,10 +239,7 @@ export function matchDevice(
       notes: release.notes,
       notesUrl: release.notesUrl,
       publishedAt: release.publishedAt,
-      // Indexes written before the registry copied `signed: false` onto each
-      // build carry it only at project level; either one means unsigned.
-      unsigned:
-        build.unsigned === true || project.signed === false || undefined,
+      unsigned: isUnsignedBuild(project, build) || undefined,
     };
 
     // A device only accepts an image signed with the key it was flashed with,
