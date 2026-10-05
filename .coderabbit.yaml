@@ -246,10 +246,10 @@ reviews:
         - TypeScript: `strict`, `noUncheckedIndexedAccess`,
           `noImplicitOverride`; `no-explicit-any` is an ESLint error;
           relative imports carry `.js` (nodenext), in `web/` too;
-          `types: ["node"]` stays in tsconfig. `@sinclair/typebox` 0.34
-          on purpose (it matches `@signalk/server-api`); `default: {}` on
-          every settings section and `Value.Default` are load-bearing.
-          Flag the unscoped `typebox` 1.x, `Value.Create`, or `any`.
+          `types: ["node"]` stays in tsconfig. TypeBox is the unscoped
+          `typebox` 1.x package (validation errors carry `instancePath`);
+          `default: {}` on every settings section and `Value.Default` are
+          load-bearing. Flag `@sinclair/typebox`, `Value.Create`, or `any`.
         - Runtime dependencies must be pure JS (the app store installs
           with `--ignore-scripts`) and Apache-2.0 compatible; everything
           browser-side is a devDependency bundled into `public/`.
@@ -426,7 +426,7 @@ reviews:
         `index.ts` is the plugin factory: `start`, `stop`, `schema`,
         `registerWithRouter`; the service is created lazily and `start()`
         wraps a `void` promise in try/catch because the server neither
-        awaits nor catches it. `config.ts` is the TypeBox 0.34 settings
+        awaits nor catches it. `config.ts` is the TypeBox 1.x settings
         schema with `default: {}` per section and `applyDefaults`
         resetting a whole invalid section; `PLUGIN_ID`, `PUBLIC_BASE`,
         `PUBLIC_FW_BASE` and `DEFAULT_REGISTRY_INDEX` are the wire
@@ -506,7 +506,7 @@ reviews:
         `exports` (the Signal K loader reads `main`), `files` limited to
         `dist`, `public`, `icon.svg`, README and LICENSE, keywords
         `signalk-node-server-plugin` and `signalk-webapp`, `signalk.appIcon`,
-        `engines.node >= 22`, runtime dependencies only `@sinclair/typebox`
+        `engines.node >= 22`, runtime dependencies only `typebox`
         and `bonjour-service`. `prepare` runs the build and must stay quiet
         (`vite build --logLevel error`) because `npm pack` runs it and
         chatty output corrupts `npm pack --json`. `vite.config.ts`:

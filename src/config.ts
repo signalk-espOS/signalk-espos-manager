@@ -1,13 +1,10 @@
 /**
  * signalk-espos-manager configuration: the TypeBox settings schema (which is
  * both the Admin UI form and the TypeScript type) plus the defaults merge.
- *
- * `@sinclair/typebox` 0.34 is what `@signalk/server-api` ships; the unscoped
- * `typebox` package on npm is a different 1.x line with a different API.
  */
 
-import { Type, type Static } from "@sinclair/typebox";
-import { Value } from "@sinclair/typebox/value";
+import { Type, type Static } from "typebox";
+import { Value } from "typebox/value";
 
 export const PLUGIN_ID = "signalk-espos-manager";
 export const PLUGIN_NAME = "espOS Manager";
@@ -284,7 +281,7 @@ export function applyDefaults(raw: unknown): ManagerSettings {
   const repaired = candidate as Record<string, unknown>;
   for (const error of Value.Errors(SettingsSchema, repaired)) {
     // Reset the top-level section owning the errored path to its defaults.
-    const field = error.path.split("/")[1];
+    const field = error.instancePath.split("/")[1];
     if (field !== undefined && field in fallback) {
       repaired[field] = fallback[field as keyof ManagerSettings];
     }

@@ -62,8 +62,8 @@
     "node": ">=22"
   },
   "dependencies": {
-    "@sinclair/typebox": "^0.34.49",
-    "bonjour-service": "^1.4.4"
+    "bonjour-service": "^1.4.4",
+    "typebox": "^1.3.35"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

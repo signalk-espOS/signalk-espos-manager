@@ -85,6 +85,16 @@ describe("applyDefaults", () => {
     expect(settings.auth.fleetKey).toBe("keep-me");
   });
 
+  it("resets only the section an invalid field's instancePath names", () => {
+    const settings = applyDefaults({
+      mirror: { enabled: false, keepVersions: 0 },
+      ota: { channel: "beta" },
+    });
+    // The whole mirror section falls back, including its valid field.
+    expect(settings.mirror).toEqual(defaultSettings().mirror);
+    expect(settings.ota.channel).toBe("beta");
+  });
+
   it("clamps an out-of-range value back to something usable", () => {
     expect(
       applyDefaults({ ota: { maxConcurrent: 99 } }).ota.maxConcurrent,
