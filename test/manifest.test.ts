@@ -20,12 +20,14 @@ import {
   manifestPathFor,
   manifestUrlFits,
   MAX_MANIFEST_BYTES,
+  planManifests,
   MAX_NOTES_BYTES,
   summariseReleaseNotes,
   truncateBytes,
 } from "../src/mirror/manifest.js";
 import { PUBLIC_FW_BASE } from "../src/config.js";
 import type { ManifestBuildInput } from "../src/mirror/manifest.js";
+import type { RegistryProject } from "../src/registry/types.js";
 
 interface OracleCase {
   a: string;
@@ -238,6 +240,25 @@ describe("public paths and device buffers", () => {
     );
   });
 
+  it("gives each board its own manifest file", () => {
+    expect(
+      manifestPathFor("p4_cockpit", PUBLIC_FW_BASE, "waveshare-p4-touch-x-7"),
+    ).toBe(
+      "/signalk-espos-manager/fw/p4_cockpit/manifest-waveshare-p4-touch-x-7.json",
+    );
+  });
+
+  it("fits a real board's manifest URL in the device's buffer", () => {
+    const path = manifestPathFor(
+      "p4_cockpit",
+      PUBLIC_FW_BASE,
+      "waveshare-p4-touch-x-7",
+    );
+    expect(manifestUrlFits("http://192.168.100.100:3000", path)).toEqual({
+      ok: true,
+    });
+  });
+
   it("builds a root-relative firmware URL", () => {
     // Root-relative because espos_ota_resolve_url resolves a leading slash
     // against scheme+host, so the device reaches it via whatever address it
@@ -379,5 +400,151 @@ describe("summariseReleaseNotes", () => {
         MAX_NOTES_BYTES,
       );
     }
+  });
+});
+
+describe("planManifests", () => {
+  // Shaped like the cockpit entry: two boards on one chip, one image each.
+  const cockpit: RegistryProject = {
+    id: "cockpit",
+    app: "p4_cockpit",
+    name: "Cockpit",
+    repo: "dirkwa/espos-p4-cockpit",
+    targets: ["esp32p4"],
+    boards: [
+      { id: "7b", target: "esp32p4", name: "7B", reportedAs: "7B" },
+      { id: "x7", target: "esp32p4", name: "X7", reportedAs: "X7" },
+    ],
+    releases: [
+      {
+        version: "1.5.0",
+        tag: "v1.5.0",
+        channel: "stable",
+        builds: [
+          {
+            target: "esp32p4",
+            boardId: "7b",
+            otaUrl: "https://gh.invalid/p4_cockpit-1.5.0-7b-ota.bin",
+          },
+          {
+            target: "esp32p4",
+            boardId: "x7",
+            otaUrl: "https://gh.invalid/p4_cockpit-1.5.0-x7-ota.bin",
+          },
+        ],
+      },
+    ],
+  };
+  const both = [
+    { version: "1.5.0", filename: "p4_cockpit-1.5.0-7b-ota.bin" },
+    { version: "1.5.0", filename: "p4_cockpit-1.5.0-x7-ota.bin" },
+  ];
+
+  it("never puts one board's image in another board's manifest", () => {
+    const plan = planManifests(cockpit, both, PUBLIC_FW_BASE);
+    expect(plan.boards.get("7b")?.map((b) => b.url)).toEqual([
+      "/signalk-espos-manager/fw/p4_cockpit/1.5.0/p4_cockpit-1.5.0-7b-ota.bin",
+    ]);
+    expect(plan.boards.get("x7")?.map((b) => b.url)).toEqual([
+      "/signalk-espos-manager/fw/p4_cockpit/1.5.0/p4_cockpit-1.5.0-x7-ota.bin",
+    ]);
+  });
+
+  it("offers a board-specific image to no device that cannot name its board", () => {
+    expect(planManifests(cockpit, both, PUBLIC_FW_BASE).app).toEqual([]);
+  });
+
+  it("keeps an empty manifest for a declared board with nothing cached", () => {
+    const plan = planManifests(cockpit, both.slice(0, 1), PUBLIC_FW_BASE);
+    expect(plan.boards.get("x7")).toEqual([]);
+  });
+
+  it("withholds a board-agnostic image where the chip has several boards", () => {
+    const project: RegistryProject = {
+      ...cockpit,
+      releases: [
+        {
+          version: "1.2.0",
+          tag: "v1.2.0",
+          channel: "stable",
+          builds: [
+            {
+              target: "esp32p4",
+              otaUrl: "https://gh.invalid/p4_cockpit-v1.2.0-ota.bin",
+            },
+          ],
+        },
+      ],
+    };
+    const plan = planManifests(
+      project,
+      [{ version: "1.2.0", filename: "p4_cockpit-v1.2.0-ota.bin" }],
+      PUBLIC_FW_BASE,
+    );
+    expect(plan.app).toEqual([]);
+    expect([...plan.boards.values()].flat()).toEqual([]);
+  });
+
+  it("serves a board-agnostic image everywhere on a single-board chip", () => {
+    const project: RegistryProject = {
+      id: "ble-gateway",
+      app: "ble_gateway",
+      name: "BLE gateway",
+      repo: "dirkwa/espos-ble-gateway",
+      targets: ["esp32c6"],
+      boards: [{ id: "c6", target: "esp32c6", name: "C6" }],
+      releases: [
+        {
+          version: "0.3.0",
+          tag: "v0.3.0",
+          channel: "beta",
+          notes: "## Fixed\n\n- scanning survives a reconnect",
+          publishedAt: "2026-10-01T10:00:00Z",
+          builds: [
+            {
+              target: "esp32c6",
+              otaUrl: "https://gh.invalid/ble_gateway-0.3.0-ota.bin",
+            },
+          ],
+        },
+      ],
+    };
+    const plan = planManifests(
+      project,
+      [
+        {
+          version: "0.3.0",
+          filename: "ble_gateway-0.3.0-ota.bin",
+          sizeBytes: 1234,
+        },
+      ],
+      PUBLIC_FW_BASE,
+    );
+    expect(plan.app).toEqual([
+      {
+        version: "0.3.0",
+        target: "esp32c6",
+        channel: "beta",
+        url: "/signalk-espos-manager/fw/ble_gateway/0.3.0/ble_gateway-0.3.0-ota.bin",
+        size: 1234,
+        notes: "scanning survives a reconnect",
+        date: "2026-10-01T10:00:00Z",
+      },
+    ]);
+    expect(plan.boards.get("c6")).toEqual(plan.app);
+  });
+
+  it("leaves out an image the registry no longer describes", () => {
+    const plan = planManifests(
+      cockpit,
+      [
+        { version: "1.4.0", filename: "p4_cockpit-1.4.0-7b-ota.bin" },
+        { version: "1.5.0", filename: "unknown.bin" },
+        { version: "1.5.0", filename: "p4_cockpit-1.5.0-7b-merged.bin" },
+      ],
+      PUBLIC_FW_BASE,
+    );
+    expect(plan.app).toEqual([]);
+    expect([...plan.boards.values()].flat()).toEqual([]);
   });
 });

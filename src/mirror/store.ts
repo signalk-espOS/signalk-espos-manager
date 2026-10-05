@@ -8,6 +8,7 @@
  * Layout, chosen so the manifest can use root-relative URLs:
  *
  *   <dataDir>/fw/<app>/manifest.json
+ *   <dataDir>/fw/<app>/manifest-<board>.json
  *   <dataDir>/fw/<app>/<version>/<filename>
  *
  * Every path segment is validated before it touches the filesystem. The
@@ -30,6 +31,7 @@ import { join } from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import type { AppName } from "../types.js";
+import { manifestFileFor } from "./manifest.js";
 
 /** One path segment: no separators, no traversal, no surprises. */
 const SAFE_SEGMENT = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
@@ -267,11 +269,16 @@ export class FirmwareStore {
     };
   }
 
-  /** Write an application's manifest next to its versions. */
-  async writeManifest(app: AppName, json: string): Promise<string> {
+  /** Write an application's manifest, or one board's, next to its versions. */
+  async writeManifest(
+    app: AppName,
+    json: string,
+    boardId?: string,
+  ): Promise<string> {
+    if (boardId !== undefined) assertSafeSegment(boardId);
     const dir = this.appDir(app);
     await mkdir(dir, { recursive: true });
-    const path = join(dir, "manifest.json");
+    const path = join(dir, manifestFileFor(boardId));
     const tmp = `${path}.tmp`;
     await writeFile(tmp, json, "utf8");
     await rename(tmp, path);
@@ -293,9 +300,16 @@ export class FirmwareStore {
     return path;
   }
 
-  async readManifest(app: AppName): Promise<string | undefined> {
+  async readManifest(
+    app: AppName,
+    boardId?: string,
+  ): Promise<string | undefined> {
+    if (boardId !== undefined) assertSafeSegment(boardId);
     try {
-      return await readFile(join(this.appDir(app), "manifest.json"), "utf8");
+      return await readFile(
+        join(this.appDir(app), manifestFileFor(boardId)),
+        "utf8",
+      );
     } catch {
       return undefined;
     }

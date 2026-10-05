@@ -139,6 +139,21 @@ function refusingCalls(refused: Set<number>): typeof fetch {
 }
 
 describe("configureOta", () => {
+  it("points a device whose board resolves at that board's manifest", async () => {
+    const { client, config } = await startConfigDevice();
+    const result = await configureOta({
+      client,
+      app: "cockpit",
+      channel: "stable",
+      publicBase: PUBLIC_FW_BASE,
+      boardId: "waveshare-p4-touch-7b",
+    });
+    const path =
+      "/signalk-espos-manager/fw/cockpit/manifest-waveshare-p4-touch-7b.json";
+    expect(result.manifestPath).toBe(path);
+    expect((config.ota as Record<string, unknown>).manifest_path).toBe(path);
+  });
+
   it("writes both the source and the path, and confirms them", async () => {
     // Writing the path alone would fix nothing: with manifest_src "url" the
     // device is not consulting the path at all.

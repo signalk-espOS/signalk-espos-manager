@@ -258,6 +258,25 @@ describe("FirmwareStore manifests and pruning", () => {
     await expect(stat(`${path}.tmp`)).rejects.toThrow();
   });
 
+  it("keeps a board's manifest apart from the app's and out of the cache list", async () => {
+    const store = makeStore();
+    const app = '{"schema":1,"app":"cockpit","builds":[]}';
+    const board = '{"schema":1,"app":"cockpit","builds":[{"version":"1.5.0"}]}';
+    await store.writeManifest("cockpit", app);
+    const path = await store.writeManifest("cockpit", board, "x7");
+    expect(path.endsWith(join("cockpit", "manifest-x7.json"))).toBe(true);
+    expect(await store.readManifest("cockpit")).toBe(app);
+    expect(await store.readManifest("cockpit", "x7")).toBe(board);
+    // A file, not a directory, so it can never be listed or pruned as a version.
+    expect(await store.list()).toEqual([]);
+  });
+
+  it("refuses a board id that is not a safe path segment", async () => {
+    await expect(
+      makeStore().writeManifest("cockpit", "{}", "../x"),
+    ).rejects.toBeInstanceOf(UnsafePathError);
+  });
+
   it("returns undefined for an app with no manifest", async () => {
     expect(await makeStore().readManifest("cockpit")).toBeUndefined();
   });

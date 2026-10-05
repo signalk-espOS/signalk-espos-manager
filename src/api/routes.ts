@@ -75,6 +75,7 @@ export function registerRoutes(
           service.fleet.list(),
           service.fleet.getWarnings(),
           service.getKeys(),
+          (app, board) => service.boardIdFor(app, board),
         ),
       );
     }),
@@ -90,7 +91,11 @@ export function registerRoutes(
       if (device === undefined) {
         return res.status(404).json({ error: `no device ${id}` });
       }
-      return res.json(serializeDevice(device, service.getKeys()));
+      return res.json(
+        serializeDevice(device, service.getKeys(), (app, board) =>
+          service.boardIdFor(app, board),
+        ),
+      );
     }),
   );
 
@@ -323,11 +328,15 @@ export function registerRoutes(
             port: device.identity.port,
             key: keys?.keyFor(id),
           });
+          // Loaded first: the board a device resolves to picks its manifest,
+          // and right after a restart the index may not be held yet.
+          await service.getIndex();
           const result = await configureOta({
             client,
             app,
             channel: settings?.ota.channel ?? "stable",
             publicBase: PUBLIC_FW_BASE,
+            boardId: service.boardIdFor(app, device.snapshot?.board),
           });
           service.fleet.setOtaConfig(id, {
             manifestSrc: result.applied.manifestSrc,

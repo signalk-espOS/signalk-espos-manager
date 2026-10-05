@@ -54,9 +54,16 @@ function iso(value: number | undefined): string | undefined {
     : new Date(value).toISOString();
 }
 
+/** The registry board id for a device's reported board, when one resolves. */
+export type BoardIdFor = (
+  app: string | undefined,
+  reported: string | undefined,
+) => string | undefined;
+
 export function serializeDevice(
   record: DeviceRecord,
   keys?: KeyStore,
+  boardIdFor?: BoardIdFor,
 ): DeviceDto {
   const snapshot = record.snapshot;
   const info = snapshot?.info;
@@ -92,7 +99,7 @@ export function serializeDevice(
     otaState: snapshot?.ota?.state,
     otaError: snapshot?.ota?.lastError,
     manifestUrl: snapshot?.ota?.manifest?.url,
-    ...otaRepair(record),
+    ...otaRepair(record, boardIdFor),
     sources: Object.keys(record.identity.sources),
   };
 }
@@ -104,14 +111,21 @@ export function serializeDevice(
  * path is per-application. A device that has not reported its app yet is left
  * unflagged rather than accused.
  */
-function otaRepair(record: DeviceRecord): {
+function otaRepair(
+  record: DeviceRecord,
+  boardIdFor?: BoardIdFor,
+): {
   otaNeedsRepair?: boolean;
   otaRepairReason?: string;
 } {
   const app = record.snapshot?.app;
   const manifest = record.snapshot?.ota?.manifest;
   if (app === undefined || manifest === undefined) return {};
-  const expected = manifestPathFor(app, PUBLIC_FW_BASE);
+  const expected = manifestPathFor(
+    app,
+    PUBLIC_FW_BASE,
+    boardIdFor?.(app, record.snapshot?.board),
+  );
   // Judge from the device's own `ota` config when we could read it, never from
   // the status URL alone. In `signalk` mode espOS derives the URL from the
   // server it picked and `/ota/status` reports it only after a check has run
@@ -173,8 +187,11 @@ export function serializeFleet(
   records: DeviceRecord[],
   warnings: string[],
   keys?: KeyStore,
+  boardIdFor?: BoardIdFor,
 ): FleetDto {
-  const devices = records.map((record) => serializeDevice(record, keys));
+  const devices = records.map((record) =>
+    serializeDevice(record, keys, boardIdFor),
+  );
   return {
     devices,
     summary: {

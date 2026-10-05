@@ -86,4 +86,30 @@ describe("otaNeedsRepair", () => {
     const dto = serializeDevice(record("", {}));
     expect(dto.otaNeedsRepair).toBe(true);
   });
+
+  it("expects a device whose board resolves to read that board's manifest", () => {
+    const boardIdFor = (): string => "waveshare-p4-touch-x-7";
+    const onAppPath = serializeDevice(
+      record("", {
+        manifestSrc: "signalk",
+        manifestPath: "/signalk-espos-manager/fw/cockpit/manifest.json",
+      }),
+      undefined,
+      boardIdFor,
+    );
+    // The application's manifest withholds board-specific images, so a
+    // device left on it never hears of an update; "Fix this" moves it.
+    expect(onAppPath.otaNeedsRepair).toBe(true);
+
+    const onBoardPath = serializeDevice(
+      record("", {
+        manifestSrc: "signalk",
+        manifestPath:
+          "/signalk-espos-manager/fw/cockpit/manifest-waveshare-p4-touch-x-7.json",
+      }),
+      undefined,
+      boardIdFor,
+    );
+    expect(onBoardPath.otaNeedsRepair).toBe(false);
+  });
 });
