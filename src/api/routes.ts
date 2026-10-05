@@ -348,16 +348,15 @@ export function registerRoutes(
           await service.manifestsSettled(app);
           const boardId =
             service.boardIdFor(app, device.snapshot?.board) ?? undefined;
-          // A board manifest whose write failed would leave the device
-          // fetching a 404 on every check, with nothing on screen saying why.
-          if (
-            boardId !== undefined &&
-            (await service.boardManifestMissing(app, boardId))
-          ) {
+          // A manifest whose write failed would leave the device fetching a
+          // 404 on every check, with nothing on screen saying why.
+          if (await service.manifestMissing(app, boardId)) {
             res.status(503).json({
               error:
-                `the update manifest for board "${boardId}" could not be ` +
-                "written — see the plugin log",
+                (boardId === undefined
+                  ? `the update manifest for "${app}"`
+                  : `the update manifest for board "${boardId}"`) +
+                " could not be written — see the plugin log",
             });
             return;
           }

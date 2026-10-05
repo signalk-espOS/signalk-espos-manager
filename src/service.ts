@@ -604,11 +604,12 @@ export class ManagerService {
   }
 
   /**
-   * Whether this mirror should serve a board's manifest and still has none
-   * after writing the app's manifests once more. An app nothing was mirrored
-   * for yet has never had them written; a failed write is retried here.
+   * Whether this mirror should serve the manifest a device will be pointed
+   * at (the board's, or the app's without a board) and still has none after
+   * writing the app's manifests once more. An app nothing was mirrored for
+   * yet has never had them written; a failed write is retried here.
    */
-  async boardManifestMissing(app: string, boardId: string): Promise<boolean> {
+  async manifestMissing(app: string, boardId?: string): Promise<boolean> {
     const store = this.store;
     if (store === undefined || this.mirror.mode !== "mirror") return false;
     const has = async (): Promise<boolean> => {
