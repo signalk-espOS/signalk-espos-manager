@@ -18,12 +18,18 @@ import { OtaOrchestrator } from "./ota/orchestrator.js";
 import type { JobView } from "./ota/job.js";
 import { DeviceClient } from "./device/client.js";
 import { fleetKeyUsable, provisionFleetKey } from "./device/provision.js";
-import { matchDevice, projectForApp } from "./registry/resolve.js";
 import {
+  boardIdFromReport,
+  matchDevice,
+  projectForApp,
+} from "./registry/resolve.js";
+import type { RegistryProject } from "./registry/types.js";
+import {
+  filenameFromUrl,
   firmwareUrlFor,
   generateManifest,
   isReleaseVersion,
-  summariseReleaseNotes,
+  planManifests,
 } from "./mirror/manifest.js";
 import {
   ensureFirmwareLink,
@@ -46,6 +52,8 @@ export class ManagerService {
   private store?: FirmwareStore;
   private registry?: RegistryClient;
   private registryState?: IndexResult;
+  private readonly manifestWrites = new Map<string, Promise<void>>();
+  private manifestRefresh?: Promise<void>;
   private orchestrator?: OtaOrchestrator;
   private mirror: { mode: MirrorMode; reason?: string } = {
     mode: "upstream",
@@ -96,6 +104,7 @@ export class ManagerService {
 
       if (settings.mirror.enabled) {
         await this.startMirror(dataDir, settings);
+        this.manifestRefresh = this.refreshManifests();
       } else {
         this.mirror = {
           mode: "upstream",
@@ -464,7 +473,7 @@ export class ManagerService {
           filename,
           PUBLIC_FW_BASE,
         );
-        await this.writeManifestFor(snapshot.app, project, build.version);
+        await this.writeManifestsFor(project);
       } catch (error) {
         // Mirroring failed: fall back to the upstream URL, which needs the
         // device to have internet but is better than refusing outright.
@@ -501,43 +510,150 @@ export class ManagerService {
     return { ok: true, job: orch.get(id) };
   }
 
-  /** Regenerate an app's manifest from whatever is cached for it. */
-  private async writeManifestFor(
-    app: string,
-    project: {
-      releases?: {
-        version: string;
-        channel: string;
-        notes?: string;
-        publishedAt?: string;
-      }[];
-    },
-    preferVersion?: string,
-  ): Promise<void> {
+  /**
+   * Regenerate an application's manifests from whatever is cached for it: the
+   * board-agnostic one and one per declared board. Every one is rewritten,
+   * even when empty, so a manifest written before an image moved to a
+   * per-board file cannot keep offering it.
+   */
+  private writeManifestsFor(project: RegistryProject): Promise<void> {
+    // One regeneration per app at a time: the start-up refresh and an update
+    // both write the same files through the same temporary path, and a plan
+    // taken before the other's download landed must not overwrite its result.
+    const previous = this.manifestWrites.get(project.app) ?? Promise.resolve();
+    const next = previous.then(() => this.regenerateManifests(project));
+    const tail = next.catch(() => undefined);
+    this.manifestWrites.set(project.app, tail);
+    void tail.then(() => {
+      if (this.manifestWrites.get(project.app) === tail) {
+        this.manifestWrites.delete(project.app);
+      }
+    });
+    return next;
+  }
+
+  private async regenerateManifests(project: RegistryProject): Promise<void> {
     const store = this.store;
     if (store === undefined) return;
-    const cached = (await store.list()).filter((f) => f.app === app);
-    const builds = cached
-      .filter((f) => f.filename.endsWith(".bin"))
-      .map((f) => {
-        const release = project.releases?.find((r) => r.version === f.version);
-        return {
-          version: f.version,
-          target: this.targetForApp(app) ?? "",
-          channel: (release?.channel === "beta" ? "beta" : "stable") as
-            "stable" | "beta",
-          url: firmwareUrlFor(app, f.version, f.filename, PUBLIC_FW_BASE),
-          size: f.sizeBytes,
-          notes: summariseReleaseNotes(release?.notes),
-          date: release?.publishedAt,
-        };
-      })
-      .filter((b) => b.target !== "");
-    if (builds.length === 0) return;
-    void preferVersion;
-    const { json, warnings } = generateManifest(app, builds);
-    for (const warning of warnings) this.app.debug(warning);
-    await store.writeManifest(app, json);
+    const cached = (await store.list()).filter((f) => f.app === project.app);
+    const plan = planManifests(project, cached, PUBLIC_FW_BASE);
+    const outputs: [string | undefined, typeof plan.app][] = [
+      [undefined, plan.app],
+      ...plan.boards.entries(),
+    ];
+    for (const [boardId, builds] of outputs) {
+      const { json, warnings } = generateManifest(project.app, builds);
+      for (const warning of warnings) this.app.debug(warning);
+      try {
+        await store.writeManifest(project.app, json, boardId);
+      } catch (error) {
+        // A board id is registry content; one the store refuses must not
+        // keep the other boards' manifests stale, nor fail the update that
+        // asked for them.
+        this.app.debug(
+          `could not write the ${project.app} manifest for board ` +
+            `${String(boardId)}: ${String(error)}`,
+        );
+      }
+    }
+    // A board the registry dropped or renamed keeps no manifest: a device
+    // still pointed at it would otherwise go on being offered what it lists.
+    for (const boardId of await store.manifestBoards(project.app)) {
+      if (plan.boards.has(boardId)) continue;
+      try {
+        await store.removeManifest(project.app, boardId);
+      } catch (error) {
+        this.app.debug(
+          `could not remove the ${project.app} manifest for board ` +
+            `${boardId}: ${String(error)}`,
+        );
+      }
+    }
+  }
+
+  /**
+   * Rewrite every mirrored application's manifests against the current index.
+   *
+   * Run at start so a manifest written by an earlier version of this plugin,
+   * or against an older index, does not keep offering what it no longer
+   * should until the next plugin-driven update. Also loads the index the
+   * fleet view resolves boards with.
+   */
+  private async refreshManifests(): Promise<void> {
+    const store = this.store;
+    if (store === undefined || this.mirror.mode !== "mirror") return;
+    try {
+      const { index } = await this.getIndex();
+      // Apps whose last image went still hold a manifest, which must be
+      // emptied rather than left listing files that are gone. An app the
+      // index omits is left alone: an outage or a malformed entry omits it
+      // as well as a removal does.
+      const apps = new Set([
+        ...(await store.list()).map((f) => f.app),
+        ...(await store.manifestApps()),
+      ]);
+      for (const app of apps) {
+        const project = projectForApp(index, app);
+        if (project !== undefined) await this.writeManifestsFor(project);
+      }
+    } catch (error) {
+      this.app.debug(
+        `could not refresh the update manifests: ${String(error)}`,
+      );
+    }
+  }
+
+  /**
+   * Whether this mirror should serve the manifest a device will be pointed
+   * at (the board's, or the app's without a board) and still has none after
+   * writing the app's manifests once more. An app nothing was mirrored for
+   * yet has never had them written; a failed write is retried here.
+   */
+  async manifestMissing(app: string, boardId?: string): Promise<boolean> {
+    const store = this.store;
+    if (store === undefined || this.mirror.mode !== "mirror") return false;
+    const has = async (): Promise<boolean> => {
+      try {
+        return (await store.readManifest(app, boardId)) !== undefined;
+      } catch {
+        return false;
+      }
+    };
+    if (await has()) return false;
+    const index = this.registryState?.index;
+    const project = index === undefined ? undefined : projectForApp(index, app);
+    if (project === undefined) return true;
+    try {
+      await this.writeManifestsFor(project);
+    } catch (error) {
+      this.app.debug(`could not write the ${app} manifests: ${String(error)}`);
+    }
+    return !(await has());
+  }
+
+  /**
+   * Resolves once the start-up refresh and any queued regeneration for this
+   * app have written its manifests, so a path handed to a device exists.
+   */
+  async manifestsSettled(app: string): Promise<void> {
+    await this.manifestRefresh;
+    await this.manifestWrites.get(app);
+  }
+
+  /**
+   * The registry's id for the board a device reports, from the index already
+   * held. Undefined when it reports none or nobody claims it, which means
+   * "the application's manifest"; null when no index has been fetched yet,
+   * so a caller can tell "no board" from "cannot say".
+   */
+  boardIdFor(
+    app: string | undefined,
+    reported: string | undefined,
+  ): string | undefined | null {
+    if (app === undefined) return undefined;
+    const index = this.registryState?.index;
+    if (index === undefined) return null;
+    return boardIdFromReport(projectForApp(index, app)?.boards, reported);
   }
 
   /**
@@ -558,19 +674,6 @@ export class ManagerService {
     return `http://${host}:${port}`;
   }
 
-  /** The chip a device running this app reported, when one did. */
-  private targetForApp(app: string): string | undefined {
-    for (const device of this.fleet.list()) {
-      if (
-        device.snapshot?.app === app &&
-        device.snapshot.target !== undefined
-      ) {
-        return device.snapshot.target;
-      }
-    }
-    return undefined;
-  }
-
   /** Status line plus deltas, after every cycle. */
   private report(): void {
     try {
@@ -582,26 +685,7 @@ export class ManagerService {
   }
 }
 
-/**
- * The filename to cache a firmware URL under.
- *
- * Taken from the URL's last path segment, and constrained to what the store
- * accepts as a path segment — the registry is third-party content, so a crafted
- * URL must not be able to choose where the file lands. Anything unusable falls
- * back to a neutral name.
- */
-export function filenameFromUrl(url: string): string {
-  let last = url;
-  try {
-    last = new URL(url).pathname;
-  } catch {
-    // Not absolute; treat the whole string as a path.
-  }
-  const segment = last.split("/").filter(Boolean).at(-1) ?? "";
-  return /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(segment)
-    ? segment
-    : "firmware.bin";
-}
+export { filenameFromUrl };
 
 /**
  * The address of the local interface that shares a network with `peer`.

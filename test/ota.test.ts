@@ -335,6 +335,26 @@ describe("OtaOrchestrator", () => {
     };
   }
 
+  /**
+   * Waits for the jobs a test started to stop talking to the device. Closing
+   * the server under a request in flight raises an uncaught socket error on
+   * some platforms (EINVAL from setTypeOfService on macOS), which fails the
+   * whole run rather than the test that caused it.
+   */
+  async function settle(orch: OtaOrchestrator): Promise<void> {
+    const active = new Set([
+      "installing",
+      "rebooting",
+      "verifying",
+      "confirming",
+    ]);
+    for (let i = 0; i < 200; i += 1) {
+      if (!orch.list().some((v) => active.has(v.state))) return;
+      await new Promise<void>((r) => setTimeout(r, 10));
+    }
+    throw new Error("orchestrator jobs did not settle");
+  }
+
   it("refuses a second job for the same device", async () => {
     const device = await startDevice({
       statuses: [{ state: "downloading", progress: { received: 1, total: 9 } }],
@@ -346,6 +366,7 @@ describe("OtaOrchestrator", () => {
     expect(first.queued).toBe(true);
     expect(second.queued).toBe(false);
     expect(second.reason).toMatch(/already running or queued/);
+    await settle(orch);
   });
 
   it("pauses the queue after a job fails", async () => {
@@ -437,6 +458,7 @@ describe("OtaOrchestrator", () => {
     await new Promise<void>((r) => setTimeout(r, 0));
     const started = orch.list().filter((v) => v.state !== "queued");
     expect(started.length).toBe(3);
+    await settle(orch);
   });
 
   it("still runs one at a time by default", async () => {
@@ -453,6 +475,7 @@ describe("OtaOrchestrator", () => {
     }
     await new Promise<void>((r) => setTimeout(r, 0));
     expect(orch.list().filter((v) => v.state === "queued").length).toBe(1);
+    await settle(orch);
   });
 
   it("reports nothing to cancel for an unknown device", async () => {

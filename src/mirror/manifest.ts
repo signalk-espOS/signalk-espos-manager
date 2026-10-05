@@ -20,6 +20,7 @@
  * quietly mangle.
  */
 
+import type { RegistryProject } from "../registry/types.js";
 import type { AppName, Channel, Target } from "../types.js";
 /* Imported for this module's own use and re-exported so every existing
  * importer keeps working: the implementations moved to version.ts only so the
@@ -204,11 +205,51 @@ export function generateManifest(
 }
 
 /**
- * The public path a device fetches an application's manifest from, and the
- * value written to `ota.manifest_path`.
+ * The manifest's filename inside the application's directory.
+ *
+ * Per board because espOS picks a manifest entry by target and channel only
+ * (`espos_ota_manifest_pick()`), never by board: two boards on one chip
+ * sharing a manifest means a panel can offer itself, and with `auto_install`
+ * install, the other board's image -- a black screen. A file rather than a
+ * directory, so it can never be mistaken for a cached version.
  */
-export function manifestPathFor(app: AppName, base: string): string {
-  return `${base}/${encodeURIComponent(app)}/manifest.json`;
+export function manifestFileFor(boardId?: string): string {
+  return boardId === undefined ? "manifest.json" : `manifest-${boardId}.json`;
+}
+
+/**
+ * The public path a device fetches its manifest from, and the value written
+ * to `ota.manifest_path`. `boardId` is the registry's id for the board the
+ * device reports; without one the device gets the application's manifest,
+ * which carries only the builds safe for a board nobody could identify.
+ */
+export function manifestPathFor(
+  app: AppName,
+  base: string,
+  boardId?: string,
+): string {
+  return `${base}/${encodeURIComponent(app)}/${encodeURIComponent(manifestFileFor(boardId))}`;
+}
+
+/**
+ * The filename to cache a firmware URL under.
+ *
+ * Taken from the URL's last path segment, and constrained to what the store
+ * accepts as a path segment — the registry is third-party content, so a crafted
+ * URL must not be able to choose where the file lands. Anything unusable falls
+ * back to a neutral name.
+ */
+export function filenameFromUrl(url: string): string {
+  let last = url;
+  try {
+    last = new URL(url).pathname;
+  } catch {
+    // Not absolute; treat the whole string as a path.
+  }
+  const segment = last.split("/").filter(Boolean).at(-1) ?? "";
+  return /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(segment)
+    ? segment
+    : "firmware.bin";
 }
 
 /** Root-relative firmware URL, resolved by the device against scheme+host. */
@@ -219,6 +260,73 @@ export function firmwareUrlFor(
   base: string,
 ): string {
   return `${base}/${encodeURIComponent(app)}/${encodeURIComponent(version)}/${encodeURIComponent(filename)}`;
+}
+
+/** A firmware image in the cache, as far as manifest planning cares. */
+export interface CachedImage {
+  version: string;
+  filename: string;
+  sizeBytes?: number;
+}
+
+/** What to write: the application's manifest and one per declared board. */
+export interface ManifestPlan {
+  app: ManifestBuildInput[];
+  boards: Map<string, ManifestBuildInput[]>;
+}
+
+/**
+ * Sort cached images into the manifests a device may read.
+ *
+ * The rule is `matchDevice()`'s, because a device reading a manifest on its
+ * own must never be offered what the plugin would refuse to install for it:
+ * a build naming a board goes only to that board, and a build naming none
+ * goes anywhere only while the project declares at most one board on its
+ * chip. Target and channel come from the registry build the file was
+ * downloaded from, matched by filename; an image the registry no longer
+ * describes cannot be attributed to a board and is left out.
+ */
+export function planManifests(
+  project: RegistryProject,
+  cached: readonly CachedImage[],
+  base: string,
+): ManifestPlan {
+  const plan: ManifestPlan = { app: [], boards: new Map() };
+  for (const board of project.boards ?? []) plan.boards.set(board.id, []);
+
+  for (const image of cached) {
+    if (!image.filename.endsWith(".bin")) continue;
+    const release = project.releases?.find((r) => r.version === image.version);
+    const build = release?.builds.find(
+      (b) =>
+        b.otaUrl !== undefined && filenameFromUrl(b.otaUrl) === image.filename,
+    );
+    if (release === undefined || build === undefined) continue;
+
+    const input: ManifestBuildInput = {
+      version: image.version,
+      target: build.target,
+      channel: release.channel,
+      url: firmwareUrlFor(project.app, image.version, image.filename, base),
+      size: image.sizeBytes,
+      notes: summariseReleaseNotes(release.notes),
+      date: release.publishedAt,
+    };
+
+    if (build.boardId !== undefined) {
+      // Created on demand only for a board the project still declares; a
+      // build naming an undeclared board has no device that resolves to it.
+      plan.boards.get(build.boardId)?.push(input);
+      continue;
+    }
+    const onTarget = (project.boards ?? []).filter(
+      (b) => b.target === build.target,
+    );
+    if (onTarget.length > 1) continue;
+    plan.app.push(input);
+    for (const board of onTarget) plan.boards.get(board.id)?.push(input);
+  }
+  return plan;
 }
 
 /**

@@ -75,6 +75,7 @@ export function registerRoutes(
           service.fleet.list(),
           service.fleet.getWarnings(),
           service.getKeys(),
+          (app, board) => service.boardIdFor(app, board),
         ),
       );
     }),
@@ -90,7 +91,11 @@ export function registerRoutes(
       if (device === undefined) {
         return res.status(404).json({ error: `no device ${id}` });
       }
-      return res.json(serializeDevice(device, service.getKeys()));
+      return res.json(
+        serializeDevice(device, service.getKeys(), (app, board) =>
+          service.boardIdFor(app, board),
+        ),
+      );
     }),
   );
 
@@ -323,11 +328,44 @@ export function registerRoutes(
             port: device.identity.port,
             key: keys?.keyFor(id),
           });
+          // Loaded first: the board a device resolves to picks its manifest,
+          // and right after a restart the index may not be held yet.
+          const { index } = await service.getIndex();
+          // Without the project its board cannot resolve, and the app
+          // manifest a multi-board project leaves nearly empty would quietly
+          // stop this device's updates.
+          if (
+            device.snapshot?.board !== undefined &&
+            projectForApp(index, app) === undefined
+          ) {
+            res.status(409).json({
+              error:
+                `no registry project provides "${app}" — ` +
+                "retry when the registry is available",
+            });
+            return;
+          }
+          await service.manifestsSettled(app);
+          const boardId =
+            service.boardIdFor(app, device.snapshot?.board) ?? undefined;
+          // A manifest whose write failed would leave the device fetching a
+          // 404 on every check, with nothing on screen saying why.
+          if (await service.manifestMissing(app, boardId)) {
+            res.status(503).json({
+              error:
+                (boardId === undefined
+                  ? `the update manifest for "${app}"`
+                  : `the update manifest for board "${boardId}"`) +
+                " could not be written — see the plugin log",
+            });
+            return;
+          }
           const result = await configureOta({
             client,
             app,
             channel: settings?.ota.channel ?? "stable",
             publicBase: PUBLIC_FW_BASE,
+            boardId,
           });
           service.fleet.setOtaConfig(id, {
             manifestSrc: result.applied.manifestSrc,

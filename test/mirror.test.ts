@@ -258,6 +258,48 @@ describe("FirmwareStore manifests and pruning", () => {
     await expect(stat(`${path}.tmp`)).rejects.toThrow();
   });
 
+  it("keeps a board's manifest apart from the app's and out of the cache list", async () => {
+    const store = makeStore();
+    const app = '{"schema":1,"app":"cockpit","builds":[]}';
+    const board = '{"schema":1,"app":"cockpit","builds":[{"version":"1.5.0"}]}';
+    await store.writeManifest("cockpit", app);
+    const path = await store.writeManifest("cockpit", board, "x7");
+    expect(path.endsWith(join("cockpit", "manifest-x7.json"))).toBe(true);
+    expect(await store.readManifest("cockpit")).toBe(app);
+    expect(await store.readManifest("cockpit", "x7")).toBe(board);
+    // A file, not a directory, so it can never be listed or pruned as a version.
+    expect(await store.list()).toEqual([]);
+  });
+
+  it("lists and removes board manifests without touching the app's", async () => {
+    const store = makeStore();
+    await store.writeManifest("cockpit", "{}");
+    await store.writeManifest("cockpit", "{}", "7b");
+    await store.writeManifest("cockpit", "{}", "x7");
+    expect((await store.manifestBoards("cockpit")).sort()).toEqual([
+      "7b",
+      "x7",
+    ]);
+    await store.removeManifest("cockpit", "x7");
+    expect(await store.manifestBoards("cockpit")).toEqual(["7b"]);
+    expect(await store.readManifest("cockpit")).toBe("{}");
+    expect(await makeStore().manifestBoards("nothing")).toEqual([]);
+  });
+
+  it("lists the apps holding a manifest even with no image cached", async () => {
+    const store = makeStore();
+    await store.writeManifest("cockpit", "{}");
+    await store.writeManifest("relay", "{}", "8ch");
+    expect((await store.manifestApps()).sort()).toEqual(["cockpit", "relay"]);
+    expect(await store.list()).toEqual([]);
+  });
+
+  it("refuses a board id that is not a safe path segment", async () => {
+    await expect(
+      makeStore().writeManifest("cockpit", "{}", "../x"),
+    ).rejects.toBeInstanceOf(UnsafePathError);
+  });
+
   it("returns undefined for an app with no manifest", async () => {
     expect(await makeStore().readManifest("cockpit")).toBeUndefined();
   });

@@ -26,6 +26,11 @@ export interface ConfigureOtaOptions {
   /** Public base path of the mirror, e.g. /signalk-espos-manager/fw. */
   publicBase: string;
   /**
+   * The registry's id for the device's board, when it resolves. Selects that
+   * board's manifest; without it the device reads the application's.
+   */
+  boardId?: string;
+  /**
    * How this device reaches the server, as scheme://host[:port]. Used only to
    * check the assembled URL fits the device's 168-byte buffer before writing.
    */
@@ -104,7 +109,11 @@ async function retryOnceIfUnreachable<T>(
 export async function configureOta(
   options: ConfigureOtaOptions,
 ): Promise<ConfigureOtaResult> {
-  const path = manifestPathFor(options.app, options.publicBase);
+  const path = manifestPathFor(
+    options.app,
+    options.publicBase,
+    options.boardId,
+  );
 
   if (options.origin !== undefined) {
     const fits = manifestUrlFits(options.origin, path);
