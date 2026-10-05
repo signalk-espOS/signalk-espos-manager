@@ -585,7 +585,9 @@ export class ManagerService {
     try {
       const { index } = await this.getIndex();
       // Apps whose last image went still hold a manifest, which must be
-      // emptied rather than left listing files that are gone.
+      // emptied rather than left listing files that are gone. An app the
+      // index omits is left alone: an outage or a malformed entry omits it
+      // as well as a removal does.
       const apps = new Set([
         ...(await store.list()).map((f) => f.app),
         ...(await store.manifestApps()),
