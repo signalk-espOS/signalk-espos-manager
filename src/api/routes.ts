@@ -330,7 +330,21 @@ export function registerRoutes(
           });
           // Loaded first: the board a device resolves to picks its manifest,
           // and right after a restart the index may not be held yet.
-          await service.getIndex();
+          const { index } = await service.getIndex();
+          // Without the project its board cannot resolve, and the app
+          // manifest a multi-board project leaves nearly empty would quietly
+          // stop this device's updates.
+          if (
+            device.snapshot?.board !== undefined &&
+            projectForApp(index, app) === undefined
+          ) {
+            res.status(409).json({
+              error:
+                `no registry project provides "${app}" — ` +
+                "retry when the registry is available",
+            });
+            return;
+          }
           const result = await configureOta({
             client,
             app,

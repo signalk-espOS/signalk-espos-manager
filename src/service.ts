@@ -52,6 +52,7 @@ export class ManagerService {
   private store?: FirmwareStore;
   private registry?: RegistryClient;
   private registryState?: IndexResult;
+  private readonly manifestWrites = new Map<string, Promise<void>>();
   private orchestrator?: OtaOrchestrator;
   private mirror: { mode: MirrorMode; reason?: string } = {
     mode: "upstream",
@@ -514,7 +515,23 @@ export class ManagerService {
    * even when empty, so a manifest written before an image moved to a
    * per-board file cannot keep offering it.
    */
-  private async writeManifestsFor(project: RegistryProject): Promise<void> {
+  private writeManifestsFor(project: RegistryProject): Promise<void> {
+    // One regeneration per app at a time: the start-up refresh and an update
+    // both write the same files through the same temporary path, and a plan
+    // taken before the other's download landed must not overwrite its result.
+    const previous = this.manifestWrites.get(project.app) ?? Promise.resolve();
+    const next = previous.then(() => this.regenerateManifests(project));
+    const tail = next.catch(() => undefined);
+    this.manifestWrites.set(project.app, tail);
+    void tail.then(() => {
+      if (this.manifestWrites.get(project.app) === tail) {
+        this.manifestWrites.delete(project.app);
+      }
+    });
+    return next;
+  }
+
+  private async regenerateManifests(project: RegistryProject): Promise<void> {
     const store = this.store;
     if (store === undefined) return;
     const cached = (await store.list()).filter((f) => f.app === project.app);
