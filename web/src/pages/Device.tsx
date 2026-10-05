@@ -112,6 +112,28 @@ export function DevicePage() {
               </dd>
             </>
           )}
+          {device.coprocessor !== undefined && (
+            <>
+              <dt>Radio co-processor</dt>
+              <dd>
+                {device.coprocessor.target ?? "present"}
+                {/* "0.0.0" is an image too old to announce itself, not a
+                    version anyone shipped. */}
+                {device.coprocessor.version === "0.0.0"
+                  ? " · version not reported"
+                  : device.coprocessor.version !== undefined &&
+                    ` · firmware ${device.coprocessor.version}`}
+                {device.coprocessor.stale === true && (
+                  <span class="warn-text">
+                    {" "}
+                    · behind
+                    {device.coprocessor.hostVersion !== undefined &&
+                      `, this build expects ${device.coprocessor.hostVersion}`}
+                  </span>
+                )}
+              </dd>
+            </>
+          )}
           {device.uptimeS !== undefined && (
             <>
               <dt>Running for</dt>

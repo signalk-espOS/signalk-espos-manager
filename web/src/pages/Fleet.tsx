@@ -134,6 +134,14 @@ export function FleetPage() {
                     not set up for updates
                   </span>
                 )}
+                {device.coprocessorStale === true && (
+                  <span
+                    class="pill warn"
+                    title="The radio co-processor runs firmware older than this build expects"
+                  >
+                    co-processor behind
+                  </span>
+                )}
                 {job !== undefined && !isJobFinished(job) && (
                   <span class="pill busy">
                     {job.state}

@@ -91,6 +91,61 @@ describe("parseSystemInfo", () => {
     expect(info.hardware?.features).toEqual(["wifi", "ble"]);
   });
 
+  it("reads a co-processor report with its target", () => {
+    const info = parseSystemInfo({
+      hardware: {
+        board: "espos-ble-gateway",
+        coprocessor: {
+          version: "2.12.3",
+          host_version: "3.0.9",
+          target: "esp32c6",
+          stale: true,
+        },
+      },
+    });
+    expect(info.hardware?.coprocessor).toEqual({
+      version: "2.12.3",
+      hostVersion: "3.0.9",
+      target: "esp32c6",
+      stale: true,
+    });
+  });
+
+  it("reads a co-processor report without a target", () => {
+    // The device omits target when it does not recognise the chip id.
+    const info = parseSystemInfo({
+      hardware: {
+        coprocessor: { version: "2.12.3", host_version: "3.0.9", stale: false },
+      },
+    });
+    expect(info.hardware?.coprocessor?.target).toBeUndefined();
+    expect(info.hardware?.coprocessor?.stale).toBe(false);
+  });
+
+  it("keeps a co-processor that announced no version", () => {
+    // "0.0.0" is present-and-silent, a different fact from the object being
+    // absent, so it is kept rather than dropped.
+    const info = parseSystemInfo({
+      hardware: {
+        coprocessor: {
+          version: "0.0.0",
+          host_version: "3.0.9",
+          target: "esp32c6",
+          stale: true,
+        },
+      },
+    });
+    expect(info.hardware?.coprocessor?.version).toBe("0.0.0");
+  });
+
+  it("has no co-processor on a chip that is its own radio", () => {
+    const info = parseSystemInfo({ hardware: { board: "x", mac: "aa" } });
+    expect(info.hardware?.coprocessor).toBeUndefined();
+    expect(
+      parseSystemInfo({ hardware: { coprocessor: {} } }).hardware,
+    ).toBeUndefined();
+  });
+
   it("survives junk without throwing", () => {
     expect(parseSystemInfo(null)).toEqual(expect.any(Object));
     expect(parseSystemInfo({ app: 42, cores: "two" }).app).toBeUndefined();

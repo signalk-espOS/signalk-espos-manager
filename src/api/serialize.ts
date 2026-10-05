@@ -10,7 +10,7 @@ import { PUBLIC_FW_BASE } from "../config.js";
 import { isProvisionalId } from "../fleet/poller.js";
 import { manifestPathFor } from "../mirror/manifest.js";
 import { needsOtaRepair } from "../ota/configure.js";
-import type { DeviceRecord } from "../types.js";
+import type { CoprocessorInfo, DeviceRecord } from "../types.js";
 
 export interface DeviceDto {
   id: string;
@@ -36,6 +36,10 @@ export interface DeviceDto {
   mac?: string;
   flashBytes?: number;
   psramBytes?: number;
+  /** A separate radio chip's firmware, when the board has one. */
+  coprocessor?: CoprocessorInfo;
+  /** Lifted out so the fleet list can flag it without reading the object. */
+  coprocessorStale?: boolean;
   uptimeS?: number;
   freeHeap?: number;
   otaState?: string;
@@ -87,6 +91,8 @@ export function serializeDevice(
     mac: info?.hardware?.mac,
     flashBytes: info?.hardware?.flashBytes,
     psramBytes: info?.hardware?.ramPsramBytes,
+    coprocessor: info?.hardware?.coprocessor,
+    coprocessorStale: info?.hardware?.coprocessor?.stale,
     uptimeS: info?.uptimeS,
     freeHeap: info?.freeHeap,
     otaState: snapshot?.ota?.state,
