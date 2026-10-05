@@ -81,6 +81,13 @@ export interface DeviceDto {
   mac?: string;
   flashBytes?: number;
   psramBytes?: number;
+  coprocessor?: {
+    version?: string;
+    hostVersion?: string;
+    target?: string;
+    stale?: boolean;
+  };
+  coprocessorStale?: boolean;
   uptimeS?: number;
   freeHeap?: number;
   otaState?: string;

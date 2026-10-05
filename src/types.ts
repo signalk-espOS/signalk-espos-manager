@@ -93,6 +93,23 @@ export interface DeviceIdentity {
   sources: Partial<Record<SightingSource, number>>;
 }
 
+/**
+ * A separate radio chip's firmware, reported by a host whose radio is not on
+ * the same die (ESP32-P4 + ESP32-C6). Absent on a chip that is its own radio,
+ * and before the co-processor's first heartbeat.
+ */
+export interface CoprocessorInfo {
+  /** `"0.0.0"` means it answered without naming a version: an image older
+   * than the handshake that carries one, not a version to display. */
+  version?: string;
+  /** What the host build's esp_hosted expects to talk to. */
+  hostVersion?: string;
+  /** The co-processor's chip; omitted by the device when unrecognised. */
+  target?: string;
+  /** esp_hosted's own compatibility verdict, not a string comparison. */
+  stale?: boolean;
+}
+
 /** The hardware block espOS 0.10.0+ reports; absent on older firmware. */
 export interface HardwareInfo {
   mac?: string;
@@ -102,6 +119,7 @@ export interface HardwareInfo {
   ramPsramBytes?: number;
   features?: string[];
   board?: string;
+  coprocessor?: CoprocessorInfo;
 }
 
 /** Parsed `GET /api/v1/system/info` (protected). Every field is optional:

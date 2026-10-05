@@ -15,6 +15,7 @@
 
 import type {
   AppName,
+  CoprocessorInfo,
   DeviceOtaState,
   HardwareInfo,
   OtaStatus,
@@ -86,6 +87,19 @@ export function parsePing(raw: unknown): PingResult {
   };
 }
 
+function parseCoprocessor(raw: unknown): CoprocessorInfo | undefined {
+  const body = asRecord(raw);
+  const coprocessor: CoprocessorInfo = {
+    version: str(body.version),
+    hostVersion: str(body.host_version),
+    target: str(body.target),
+    stale: bool(body.stale),
+  };
+  return Object.values(coprocessor).some((value) => value !== undefined)
+    ? coprocessor
+    : undefined;
+}
+
 function parseHardware(raw: unknown): HardwareInfo | undefined {
   const body = asRecord(raw);
   if (Object.keys(body).length === 0) return undefined;
@@ -97,6 +111,7 @@ function parseHardware(raw: unknown): HardwareInfo | undefined {
     ramPsramBytes: num(body.ram_psram_bytes),
     features: strArray(body.features),
     board: str(body.board),
+    coprocessor: parseCoprocessor(body.coprocessor),
   };
   return Object.values(hardware).some((value) => value !== undefined)
     ? hardware

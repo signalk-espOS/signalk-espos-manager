@@ -18,9 +18,23 @@ from extracted text.
 
 ## Running it
 
+Use a scratch server, never the one the boat runs on. It needs only a config
+directory that names the plugin and points discovery at the devices:
+
 ```sh
-# 1. Build and install the plugin into a scratch server (see the PR body for
-#    the full recipe), start it on :3100, then:
+npm ci && npm run build
+C=${TMPDIR:-/tmp}/sk-config
+mkdir -p "$C/node_modules" "$C/plugin-config-data"
+echo '{"name":"sk-e2e","version":"0.0.1","dependencies":{"signalk-espos-manager":"*"}}' \
+  > "$C/package.json"
+ln -sfn "$PWD" "$C/node_modules/signalk-espos-manager"
+cat > "$C/plugin-config-data/signalk-espos-manager.json" <<'JSON'
+{ "enabled": true,
+  "configuration": { "discovery": { "mdns": true, "staticHosts": ["<device-ip>"] } } }
+JSON
+# Any built signalk-server checkout whose node_modules match its source:
+(cd ../signalk-server && PORT=3100 EXTERNALPORT=3100 node . -c "$C") &
+
 npm install --save-dev @playwright/test
 npx playwright install chromium
 node test/e2e/webapp.mjs
