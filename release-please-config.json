@@ -6,6 +6,7 @@
   "changelog-type": "github",
   "skip-changelog": true,
   "pull-request-title-pattern": "chore: release ${version}",
+  "pull-request-footer": "Merging this pull request tags the release, creates the GitHub Release and publishes it to npm.",
   "packages": {
     ".": {}
   }
