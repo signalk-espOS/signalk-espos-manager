@@ -112,4 +112,29 @@ describe("otaNeedsRepair", () => {
     );
     expect(onBoardPath.otaNeedsRepair).toBe(false);
   });
+
+  it("does not accuse a device on a board manifest before the index loads", () => {
+    const dto = serializeDevice(
+      record("", {
+        manifestSrc: "signalk",
+        manifestPath:
+          "/signalk-espos-manager/fw/cockpit/manifest-waveshare-p4-touch-x-7.json",
+      }),
+      undefined,
+      () => null,
+    );
+    expect(dto.otaNeedsRepair).toBe(false);
+  });
+
+  it("still flags a device pointed elsewhere before the index loads", () => {
+    const dto = serializeDevice(
+      record("", {
+        manifestSrc: "signalk",
+        manifestPath: "/plugins/signalk-espos-updates/manifest.json",
+      }),
+      undefined,
+      () => null,
+    );
+    expect(dto.otaNeedsRepair).toBe(true);
+  });
 });

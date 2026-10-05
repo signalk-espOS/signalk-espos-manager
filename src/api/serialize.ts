@@ -54,11 +54,14 @@ function iso(value: number | undefined): string | undefined {
     : new Date(value).toISOString();
 }
 
-/** The registry board id for a device's reported board, when one resolves. */
+/**
+ * The registry board id for a device's reported board when one resolves,
+ * undefined when none does, and null when no index is held to decide with.
+ */
 export type BoardIdFor = (
   app: string | undefined,
   reported: string | undefined,
-) => string | undefined;
+) => string | undefined | null;
 
 export function serializeDevice(
   record: DeviceRecord,
@@ -121,11 +124,16 @@ function otaRepair(
   const app = record.snapshot?.app;
   const manifest = record.snapshot?.ota?.manifest;
   if (app === undefined || manifest === undefined) return {};
-  const expected = manifestPathFor(
-    app,
-    PUBLIC_FW_BASE,
-    boardIdFor?.(app, record.snapshot?.board),
-  );
+  const boardId = boardIdFor?.(app, record.snapshot?.board);
+  const cfg = record.snapshot?.otaConfig;
+  const configuredPath = cfg?.manifestPath ?? pathOf(manifest.url);
+  // Without an index the right board cannot be named. A device already on one
+  // of this app's manifests may well be right, and flagging it would invite a
+  // "fix" that moves it to the wrong file.
+  const expected =
+    boardId === null && isManifestOf(app, configuredPath)
+      ? (configuredPath ?? "")
+      : manifestPathFor(app, PUBLIC_FW_BASE, boardId ?? undefined);
   // Judge from the device's own `ota` config when we could read it, never from
   // the status URL alone. In `signalk` mode espOS derives the URL from the
   // server it picked and `/ota/status` reports it only after a check has run
@@ -133,7 +141,6 @@ function otaRepair(
   // empty URL means "configured but not checked yet" just as often as
   // "pointed nowhere". Inferring from it reported "not looking for updates
   // anywhere" about a device configured seconds earlier.
-  const cfg = record.snapshot?.otaConfig;
   if (cfg !== undefined) {
     const result = needsOtaRepair(
       cfg.manifestSrc,
@@ -159,6 +166,16 @@ function otaRepair(
   return result.needed
     ? { otaNeedsRepair: true, otaRepairReason: result.reason }
     : { otaNeedsRepair: false };
+}
+
+/** True for this app's manifest path or any of its boards'. */
+function isManifestOf(app: string, path: string | undefined): boolean {
+  if (path === undefined) return false;
+  const prefix = manifestPathFor(app, PUBLIC_FW_BASE).replace(
+    /manifest\.json$/,
+    "manifest",
+  );
+  return path.startsWith(prefix) && path.endsWith(".json");
 }
 
 /** The path part of a URL, or the input when it is already a path. */

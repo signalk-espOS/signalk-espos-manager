@@ -538,6 +538,19 @@ export class ManagerService {
         );
       }
     }
+    // A board the registry dropped or renamed keeps no manifest: a device
+    // still pointed at it would otherwise go on being offered what it lists.
+    for (const boardId of await store.manifestBoards(project.app)) {
+      if (plan.boards.has(boardId)) continue;
+      try {
+        await store.removeManifest(project.app, boardId);
+      } catch (error) {
+        this.app.debug(
+          `could not remove the ${project.app} manifest for board ` +
+            `${boardId}: ${String(error)}`,
+        );
+      }
+    }
   }
 
   /**
@@ -567,16 +580,17 @@ export class ManagerService {
 
   /**
    * The registry's id for the board a device reports, from the index already
-   * held. Undefined when it reports none, nobody claims it, or no index has
-   * been fetched yet -- all of which mean "the application's manifest".
+   * held. Undefined when it reports none or nobody claims it, which means
+   * "the application's manifest"; null when no index has been fetched yet,
+   * so a caller can tell "no board" from "cannot say".
    */
   boardIdFor(
     app: string | undefined,
     reported: string | undefined,
-  ): string | undefined {
+  ): string | undefined | null {
     if (app === undefined) return undefined;
     const index = this.registryState?.index;
-    if (index === undefined) return undefined;
+    if (index === undefined) return null;
     return boardIdFromReport(projectForApp(index, app)?.boards, reported);
   }
 

@@ -300,6 +300,29 @@ export class FirmwareStore {
     return path;
   }
 
+  /** The boards an application has a manifest file for. */
+  async manifestBoards(app: AppName): Promise<string[]> {
+    let names: string[];
+    try {
+      names = await readdir(this.appDir(app));
+    } catch {
+      return [];
+    }
+    return names.flatMap((name) => {
+      const match = /^manifest-(.+)\.json$/.exec(name);
+      const board = match?.[1];
+      return board !== undefined && SAFE_SEGMENT.test(board) ? [board] : [];
+    });
+  }
+
+  /** Delete one board's manifest; absent is not an error. */
+  async removeManifest(app: AppName, boardId: string): Promise<void> {
+    assertSafeSegment(boardId);
+    await rm(join(this.appDir(app), manifestFileFor(boardId)), {
+      force: true,
+    });
+  }
+
   async readManifest(
     app: AppName,
     boardId?: string,

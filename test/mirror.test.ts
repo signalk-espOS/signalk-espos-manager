@@ -271,6 +271,21 @@ describe("FirmwareStore manifests and pruning", () => {
     expect(await store.list()).toEqual([]);
   });
 
+  it("lists and removes board manifests without touching the app's", async () => {
+    const store = makeStore();
+    await store.writeManifest("cockpit", "{}");
+    await store.writeManifest("cockpit", "{}", "7b");
+    await store.writeManifest("cockpit", "{}", "x7");
+    expect((await store.manifestBoards("cockpit")).sort()).toEqual([
+      "7b",
+      "x7",
+    ]);
+    await store.removeManifest("cockpit", "x7");
+    expect(await store.manifestBoards("cockpit")).toEqual(["7b"]);
+    expect(await store.readManifest("cockpit")).toBe("{}");
+    expect(await makeStore().manifestBoards("nothing")).toEqual([]);
+  });
+
   it("refuses a board id that is not a safe path segment", async () => {
     await expect(
       makeStore().writeManifest("cockpit", "{}", "../x"),

@@ -336,7 +336,8 @@ export function registerRoutes(
             app,
             channel: settings?.ota.channel ?? "stable",
             publicBase: PUBLIC_FW_BASE,
-            boardId: service.boardIdFor(app, device.snapshot?.board),
+            boardId:
+              service.boardIdFor(app, device.snapshot?.board) ?? undefined,
           });
           service.fleet.setOtaConfig(id, {
             manifestSrc: result.applied.manifestSrc,
