@@ -112,7 +112,7 @@ describe("parseSystemInfo", () => {
   });
 
   it("reads the co-processor a real 7B panel reports", () => {
-    // Captured from cockpit 1.5.0 on espOS 0.14.0 (192.168.0.118, 2026-10-05):
+    // Captured from cockpit 1.5.0 on espOS 0.14.0 (2026-10-05):
     // its C6 runs esp-hosted 2.12.7 against a 3.0.9 host, so it is stale.
     const info = parseSystemInfo(fixture("info-118-coprocessor"));
     expect(info.hardware?.board).toBe("Waveshare ESP32-P4-WIFI6-Touch-LCD-7B");

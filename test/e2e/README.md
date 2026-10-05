@@ -23,7 +23,7 @@ directory that names the plugin and points discovery at the devices:
 
 ```sh
 npm ci && npm run build
-C=$TMPDIR/sk-config
+C=${TMPDIR:-/tmp}/sk-config
 mkdir -p "$C/node_modules" "$C/plugin-config-data"
 echo '{"name":"sk-e2e","version":"0.0.1","dependencies":{"signalk-espos-manager":"*"}}' \
   > "$C/package.json"
