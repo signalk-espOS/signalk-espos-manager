@@ -345,6 +345,7 @@ export function registerRoutes(
             });
             return;
           }
+          await service.manifestsSettled(app);
           const result = await configureOta({
             client,
             app,

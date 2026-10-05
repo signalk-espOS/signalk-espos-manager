@@ -286,6 +286,14 @@ describe("FirmwareStore manifests and pruning", () => {
     expect(await makeStore().manifestBoards("nothing")).toEqual([]);
   });
 
+  it("lists the apps holding a manifest even with no image cached", async () => {
+    const store = makeStore();
+    await store.writeManifest("cockpit", "{}");
+    await store.writeManifest("relay", "{}", "8ch");
+    expect((await store.manifestApps()).sort()).toEqual(["cockpit", "relay"]);
+    expect(await store.list()).toEqual([]);
+  });
+
   it("refuses a board id that is not a safe path segment", async () => {
     await expect(
       makeStore().writeManifest("cockpit", "{}", "../x"),

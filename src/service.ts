@@ -53,6 +53,7 @@ export class ManagerService {
   private registry?: RegistryClient;
   private registryState?: IndexResult;
   private readonly manifestWrites = new Map<string, Promise<void>>();
+  private manifestRefresh?: Promise<void>;
   private orchestrator?: OtaOrchestrator;
   private mirror: { mode: MirrorMode; reason?: string } = {
     mode: "upstream",
@@ -103,7 +104,7 @@ export class ManagerService {
 
       if (settings.mirror.enabled) {
         await this.startMirror(dataDir, settings);
-        void this.refreshManifests();
+        this.manifestRefresh = this.refreshManifests();
       } else {
         this.mirror = {
           mode: "upstream",
@@ -583,7 +584,12 @@ export class ManagerService {
     if (store === undefined || this.mirror.mode !== "mirror") return;
     try {
       const { index } = await this.getIndex();
-      const apps = new Set((await store.list()).map((f) => f.app));
+      // Apps whose last image went still hold a manifest, which must be
+      // emptied rather than left listing files that are gone.
+      const apps = new Set([
+        ...(await store.list()).map((f) => f.app),
+        ...(await store.manifestApps()),
+      ]);
       for (const app of apps) {
         const project = projectForApp(index, app);
         if (project !== undefined) await this.writeManifestsFor(project);
@@ -593,6 +599,15 @@ export class ManagerService {
         `could not refresh the update manifests: ${String(error)}`,
       );
     }
+  }
+
+  /**
+   * Resolves once the start-up refresh and any queued regeneration for this
+   * app have written its manifests, so a path handed to a device exists.
+   */
+  async manifestsSettled(app: string): Promise<void> {
+    await this.manifestRefresh;
+    await this.manifestWrites.get(app);
   }
 
   /**

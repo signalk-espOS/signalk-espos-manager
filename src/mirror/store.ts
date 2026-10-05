@@ -315,6 +315,30 @@ export class FirmwareStore {
     });
   }
 
+  /** Every app with a manifest on disk, cached images or not. */
+  async manifestApps(): Promise<AppName[]> {
+    let apps: string[];
+    try {
+      apps = await readdir(this.options.root);
+    } catch {
+      return [];
+    }
+    const found: AppName[] = [];
+    for (const app of apps) {
+      if (!SAFE_SEGMENT.test(app)) continue;
+      let names: string[];
+      try {
+        names = await readdir(join(this.options.root, app));
+      } catch {
+        continue;
+      }
+      if (names.some((name) => /^manifest(-.+)?\.json$/.test(name))) {
+        found.push(app);
+      }
+    }
+    return found;
+  }
+
   /** Delete one board's manifest; absent is not an error. */
   async removeManifest(app: AppName, boardId: string): Promise<void> {
     assertSafeSegment(boardId);
