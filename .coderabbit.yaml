@@ -29,7 +29,9 @@ reviews:
     data model. Name the contract point when one moves (device API,
     registry index, OTA manifest).
 
-  # .github/release.yml groups auto-generated release notes by these labels.
+  # .github/release.yml groups the release notes by bug, enhancement,
+  # breaking-change and dependencies; label-by-title.yml sets the first three
+  # from the PR title.
   labeling_instructions:
     - label: bug
       instructions: "A `fix:` change or anything correcting observed wrong behaviour."
@@ -37,7 +39,7 @@ reviews:
       instructions: "A `feat:` change or a new capability, page, setting or route."
     - label: documentation
       instructions: "Changes confined to README.md, test/**/README.md or doc comments."
-    - label: breaking
+    - label: breaking-change
       instructions: "A removed or renamed setting, REST route, Signal K path or public behaviour that an installed plugin relied on."
     - label: firmware
       instructions: "Changes that track a new espOS or registry contract (parsed keys, TXT keys, manifest limits, version comparator, flasher chip tables)."
@@ -50,7 +52,7 @@ reviews:
     auto_incremental_review: true
     drafts: false
     ignore_title_keywords:
-      - "chore(release)"
+      - "chore: release"
       - "[skip review]"
     ignore_usernames:
       - "github-actions[bot]"
@@ -99,8 +101,9 @@ reviews:
         K's reusable `plugin-ci` workflow pinned to a SHA: Node 22 and 24,
         `npm run ci-lint`, build, tests, then a live server integration
         on 2.32.0 and latest with the packed tarball installed
-        `--ignore-scripts`. No npm publish workflow exists yet and the
-        version is bumped by hand.
+        `--ignore-scripts`. Releases are cut by release-please in
+        `publish.yml`, which publishes to npm with trusted publishing;
+        the version is never bumped by hand.
 
         ## The espOS ecosystem: three repositories, one contract chain
 
