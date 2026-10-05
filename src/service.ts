@@ -604,6 +604,33 @@ export class ManagerService {
   }
 
   /**
+   * Whether this mirror should serve a board's manifest and still has none
+   * after writing the app's manifests once more. An app nothing was mirrored
+   * for yet has never had them written; a failed write is retried here.
+   */
+  async boardManifestMissing(app: string, boardId: string): Promise<boolean> {
+    const store = this.store;
+    if (store === undefined || this.mirror.mode !== "mirror") return false;
+    const has = async (): Promise<boolean> => {
+      try {
+        return (await store.readManifest(app, boardId)) !== undefined;
+      } catch {
+        return false;
+      }
+    };
+    if (await has()) return false;
+    const index = this.registryState?.index;
+    const project = index === undefined ? undefined : projectForApp(index, app);
+    if (project === undefined) return true;
+    try {
+      await this.writeManifestsFor(project);
+    } catch (error) {
+      this.app.debug(`could not write the ${app} manifests: ${String(error)}`);
+    }
+    return !(await has());
+  }
+
+  /**
    * Resolves once the start-up refresh and any queued regeneration for this
    * app have written its manifests, so a path handed to a device exists.
    */
