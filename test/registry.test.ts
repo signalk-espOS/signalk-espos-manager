@@ -448,6 +448,41 @@ describe("matchDevice", () => {
     ).toBe("1.2.0");
   });
 
+  it("withholds the only board's labelled build from an unrecognised board report", () => {
+    const labelled: RegistryProject = {
+      ...cockpit,
+      boards: [
+        {
+          id: "waveshare-p4-poe",
+          target: "esp32p4",
+          name: "Waveshare ESP32-P4",
+          reportedAs: "Waveshare ESP32-P4-WIFI6-POE-ETH",
+        },
+      ],
+      releases: [
+        {
+          version: "1.2.0",
+          tag: "v1.2.0",
+          channel: "stable",
+          builds: [
+            {
+              target: "esp32p4",
+              boardId: "waveshare-p4-poe",
+              otaUrl: "https://example.invalid/ota.bin",
+            },
+          ],
+        },
+      ],
+    };
+    expect(
+      matchDevice(labelled, {
+        ...base,
+        board: "Some other P4 board",
+        runningVersion: "1.1.0",
+      }).build,
+    ).toBeUndefined();
+  });
+
   it("offers a named build to the board it names, and not to the other", () => {
     // options.board is what the DEVICE reports; the registry joins it to a
     // board id through reportedAs. Passing an id here would not resolve --

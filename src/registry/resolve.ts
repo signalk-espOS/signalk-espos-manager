@@ -132,6 +132,7 @@ function buildForTarget(
   board: string | undefined,
   boardsOnTarget: number,
   soleBoardId?: string,
+  boardReported = false,
 ): RegistryBuild | undefined {
   // No established target means no offer. Treating undefined as "anything
   // matches" hands out whichever build happens to be listed first — a C6 image
@@ -161,8 +162,9 @@ function buildForTarget(
   // that board is for every device of this app and target, whether or not the
   // firmware reports a board. Requiring the report here withheld every update
   // from firmware that never sets `hardware.board`, the BLE gateway's among
-  // them, although no other board could be meant.
-  if (board === undefined && soleBoardId !== undefined) {
+  // them, although no other board could be meant. A device that names a
+  // board nobody claims is not one of these: it may be different hardware.
+  if (!boardReported && soleBoardId !== undefined) {
     const labelled = candidates.find((build) => build.boardId === soleBoardId);
     if (labelled !== undefined) return labelled;
   }
@@ -224,6 +226,7 @@ export function matchDevice(
       boardId,
       boardsOnTarget,
       soleBoardId,
+      options.board !== undefined && options.board.trim() !== "",
     );
     if (build === undefined) continue;
     if (build.otaUrl === undefined) {
