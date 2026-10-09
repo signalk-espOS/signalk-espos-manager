@@ -131,6 +131,7 @@ function buildForTarget(
   target: Target | undefined,
   board: string | undefined,
   boardsOnTarget: number,
+  soleBoardId?: string,
 ): RegistryBuild | undefined {
   // No established target means no offer. Treating undefined as "anything
   // matches" hands out whichever build happens to be listed first — a C6 image
@@ -155,6 +156,16 @@ function buildForTarget(
   // wrong download. Verified the hard way on a Waveshare Touch-LCD-X.
   const agnostic = candidates.find((build) => build.boardId === undefined);
   if (agnostic !== undefined && boardsOnTarget <= 1) return agnostic;
+
+  // Where the project declares one board on this chip, a build labelled with
+  // that board is for every device of this app and target, whether or not the
+  // firmware reports a board. Requiring the report here withheld every update
+  // from firmware that never sets `hardware.board`, the BLE gateway's among
+  // them, although no other board could be meant.
+  if (board === undefined && soleBoardId !== undefined) {
+    const labelled = candidates.find((build) => build.boardId === soleBoardId);
+    if (labelled !== undefined) return labelled;
+  }
 
   return undefined;
 }
@@ -194,9 +205,11 @@ export function matchDevice(
     compareVersions(b.version, a.version),
   );
 
-  const boardsOnTarget = (project.boards ?? []).filter(
+  const onTarget = (project.boards ?? []).filter(
     (board) => board.target === options.target,
-  ).length;
+  );
+  const boardsOnTarget = onTarget.length;
+  const soleBoardId = boardsOnTarget === 1 ? onTarget[0]?.id : undefined;
 
   // options.board is what the DEVICE reported (a firmware-chosen name); builds
   // are keyed by the registry's board id. Resolve one to the other through the
@@ -210,6 +223,7 @@ export function matchDevice(
       options.target,
       boardId,
       boardsOnTarget,
+      soleBoardId,
     );
     if (build === undefined) continue;
     if (build.otaUrl === undefined) {
