@@ -283,7 +283,12 @@ function App() {
   useEffect(() => {
     void (async () => {
       try {
-        const response = await fetch(REGISTRY_URL);
+        // raw.githubusercontent sends max-age=300, and the browser's copy can
+        // outlive GitHub's own, so a reload kept showing the previous release
+        // after the index moved on. no-cache revalidates by ETag on every
+        // load; GitHub's CDN may still lag the push by up to five minutes,
+        // which no request header from a page can skip.
+        const response = await fetch(REGISTRY_URL, { cache: "no-cache" });
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const body = (await response.json()) as {
           projects: RegistryProject[];
