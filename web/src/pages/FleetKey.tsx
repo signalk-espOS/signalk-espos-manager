@@ -87,7 +87,7 @@ export function FleetKeyCard() {
       )}
       {outcome !== undefined && <p class="small">{outcome}</p>}
 
-      <div>
+      <div class="button-row">
         <button
           disabled={busy}
           onClick={() =>
@@ -127,7 +127,7 @@ export function FleetKeyCard() {
       </div>
 
       {editing && (
-        <div>
+        <div class="button-row">
           <input
             type="password"
             value={own}
