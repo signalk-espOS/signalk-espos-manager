@@ -146,7 +146,11 @@ export class OtaJob {
         `${this.options.deviceId}: installing ${this.options.toVersion}`,
       );
     } catch (error) {
-      if (error instanceof DeviceHttpError && error.status === 409) {
+      if (
+        error instanceof DeviceHttpError &&
+        error.status === 409 &&
+        error.code !== "coprocessor_busy"
+      ) {
         // Already busy. Adopt the operation in flight rather than failing:
         // a plugin restart mid-update must not lose track of it.
         this.log(
