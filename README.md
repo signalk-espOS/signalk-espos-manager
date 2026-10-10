@@ -39,7 +39,8 @@ From the Signal K **Appstore**, or in the server's data directory:
 npm install signalk-espos-manager
 ```
 
-Then restart the server and enable the plugin.
+Then restart the server. The plugin enables itself on first start with the
+default settings; you can still turn it off under Plugin Config.
 
 ## How updates reach a device
 
@@ -66,7 +67,13 @@ than offering an update that would be refused after the download.
 - **The fleet API key** (`auth.fleetKey`) is the password this plugin uses
   to talk to your devices' web API (`httpd.api_key` on the device). It has
   nothing to do with firmware. Changing it only means telling the plugin and
-  the devices the new one.
+  the devices the new one. It is optional: with no key on your devices
+  there is nothing to enter. The Devices page can generate a key, set your
+  own, replace it or remove it. Replacing it writes the new key to every
+  online device that used the old one; a device that is offline keeps the
+  old key, which the plugin remembers for it, and gets the new one once it
+  answers again. Removing it never
+  opens a device: each one that used it keeps it as its own key.
 
 ## Privacy and network use
 

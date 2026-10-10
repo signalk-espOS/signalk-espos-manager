@@ -14,6 +14,8 @@ import { configureOta } from "../ota/configure.js";
 import { matchDevice, projectForApp } from "../registry/resolve.js";
 import { summariseReleaseNotes } from "../mirror/manifest.js";
 import { DeviceClient } from "../device/client.js";
+import { generateFleetKey } from "../device/fleetKey.js";
+import { fleetKeyUsable } from "../device/provision.js";
 import { serializeDevice, serializeFleet } from "./serialize.js";
 
 interface ResponseLike {
@@ -70,14 +72,15 @@ export function registerRoutes(
     "/api/fleet",
     guard((_req, res) => {
       const service = getService();
-      return res.json(
-        serializeFleet(
+      return res.json({
+        ...serializeFleet(
           service.fleet.list(),
           service.fleet.getWarnings(),
           service.getKeys(),
           (app, board) => service.boardIdFor(app, board),
         ),
-      );
+        fleetKey: service.fleetKeyStatus(),
+      });
     }),
   );
 
@@ -149,6 +152,71 @@ export function registerRoutes(
           await keys.setKeyFor(id, key);
           await service.rescan();
           res.json({ ok: true, auth: service.fleet.get(id)?.auth });
+        } catch (error) {
+          res.status(500).json({ error: errorMessage(error) });
+        }
+      })();
+    }),
+  );
+
+  // POST /api/fleet-key — generate a fleet key ({generate: true}) or set a
+  // given one ({key}), moving the devices that use the old one along.
+  router.post(
+    "/api/fleet-key",
+    guard((req, res) => {
+      void (async () => {
+        const body =
+          typeof req.body === "object" && req.body !== null
+            ? (req.body as Record<string, unknown>)
+            : {};
+        const generated = body.generate === true;
+        const key = generated
+          ? generateFleetKey()
+          : typeof body.key === "string"
+            ? body.key.trim()
+            : "";
+        if (!fleetKeyUsable(key)) {
+          res
+            .status(400)
+            .json({ error: "the fleet key must be 8 to 64 bytes" });
+          return;
+        }
+        const service = getService();
+        if (service.fleetKeyBusy) {
+          res
+            .status(409)
+            .json({ error: "the fleet key is already being changed" });
+          return;
+        }
+        try {
+          const result = await service.setFleetKey(key);
+          // A generated key is returned once, so it can be copied into a
+          // device's own web login; the admin can read it again in the plugin
+          // configuration, which this route is no less protected than.
+          res.json({ ok: true, ...result, key: generated ? key : undefined });
+        } catch (error) {
+          res.status(500).json({ error: errorMessage(error) });
+        }
+      })();
+    }),
+  );
+
+  // DELETE /api/fleet-key — stop using a fleet key. Devices that used it keep
+  // it as their own key; none is opened.
+  router.delete(
+    "/api/fleet-key",
+    guard((_req, res) => {
+      void (async () => {
+        const service = getService();
+        if (service.fleetKeyBusy) {
+          res
+            .status(409)
+            .json({ error: "the fleet key is already being changed" });
+          return;
+        }
+        try {
+          const result = await service.setFleetKey("");
+          res.json({ ok: true, ...result });
         } catch (error) {
           res.status(500).json({ error: errorMessage(error) });
         }

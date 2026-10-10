@@ -19,6 +19,11 @@ import type { JobView } from "./ota/job.js";
 import { DeviceClient } from "./device/client.js";
 import { fleetKeyUsable, provisionFleetKey } from "./device/provision.js";
 import {
+  changeFleetKey,
+  moveToFleetKey,
+  type FleetKeyChange,
+} from "./device/fleetKey.js";
+import {
   boardIdFromReport,
   matchDevice,
   projectForApp,
@@ -47,6 +52,9 @@ export class ManagerService {
   private provisionTried = new Set<string>();
   private provisioning = false;
   private provisionKeyWarned = false;
+  private fleetKeyChanging = false;
+  /** The running provisioning + catch-up pass, one at a time. */
+  private keyWork?: Promise<void>;
   /** Bumped by stop(), so a provisioning run from before it stands down. */
   private generation = 0;
   private store?: FirmwareStore;
@@ -81,7 +89,7 @@ export class ManagerService {
       const dataDir = this.app.getDataDirPath();
       this.keys = new KeyStore({ dataDir });
       await this.keys.load();
-      this.keys.setFleetKey(settings.auth.fleetKey);
+      this.keys.setFleetKey(settings.auth.fleetKey ?? "");
 
       this.orchestrator = new OtaOrchestrator({
         maxConcurrent: settings.ota.maxConcurrent,
@@ -125,7 +133,7 @@ export class ManagerService {
         },
         onCycle: () => {
           this.report();
-          void this.provisionOpenDevices();
+          this.runKeyWork();
         },
       });
       await this.poller.start();
@@ -142,6 +150,7 @@ export class ManagerService {
     this.provisioning = false;
     this.provisionKeyWarned = false;
     this.provisionTried.clear();
+    this.keyWork = undefined;
     // Pause before discarding: a queued job left running would keep polling a
     // device, and calling report() on a stopped plugin, long after the user
     // disabled it. A job already writing flash is deliberately NOT interrupted
@@ -294,13 +303,15 @@ export class ManagerService {
     if (
       !this.started ||
       this.provisioning ||
+      this.fleetKeyChanging ||
       settings === undefined ||
       keys === undefined ||
       !settings.auth.autoProvision
     ) {
       return;
     }
-    if (!fleetKeyUsable(settings.auth.fleetKey)) {
+    const fleetKey = settings.auth.fleetKey ?? "";
+    if (!fleetKeyUsable(fleetKey)) {
       if (!this.provisionKeyWarned) {
         this.provisionKeyWarned = true;
         this.app.debug(
@@ -330,13 +341,16 @@ export class ManagerService {
         });
         const outcome = await provisionFleetKey(
           client,
-          settings.auth.fleetKey,
+          fleetKey,
           () => this.started && generation === this.generation,
         );
         // Cancelled mid-write: not a refusal, so leave it untried.
         if (!this.started || generation !== this.generation) return;
         if (outcome.result === "provisioned") {
           changed = true;
+          // No longer open: until the next poll says otherwise it may hold
+          // the fleet key, and a fleet key change must carry it along.
+          this.fleet.setAuth(id, "unknown");
           this.app.debug(`${id}: fleet key set on an open device`);
         } else {
           if (outcome.result !== "unreachable") this.provisionTried.add(id);
@@ -353,6 +367,127 @@ export class ManagerService {
     if (changed && this.started && generation === this.generation) {
       this.report();
     }
+  }
+
+  /** What the webapp may know about the fleet key: whether one is set. */
+  fleetKeyStatus(): { set: boolean; autoProvision: boolean } {
+    return {
+      set: (this.settings?.auth.fleetKey ?? "").trim() !== "",
+      autoProvision: this.settings?.auth.autoProvision ?? false,
+    };
+  }
+
+  /**
+   * Auto-provisioning, then moving devices left on a previous fleet key to
+   * the current one. Never alongside a fleet key change, which waits for it.
+   */
+  private runKeyWork(): void {
+    if (this.keyWork !== undefined || this.fleetKeyChanging) return;
+    const run = (async () => {
+      await this.provisionOpenDevices();
+      await this.catchUpPinnedDevices();
+    })().finally(() => {
+      if (this.keyWork === run) this.keyWork = undefined;
+    });
+    this.keyWork = run;
+  }
+
+  /** A device offline when the fleet key changed gets it once it answers. */
+  private async catchUpPinnedDevices(): Promise<void> {
+    const keys = this.keys;
+    if (
+      !this.started ||
+      this.fleetKeyChanging ||
+      keys === undefined ||
+      keys.fleetKey === ""
+    ) {
+      return;
+    }
+    try {
+      const { updated } = await moveToFleetKey({
+        keys,
+        devices: this.fleet.list(),
+        clientFor: (id) => this.clientFor(id),
+      });
+      for (const id of updated) {
+        this.app.debug(`${id}: moved to the current fleet key`);
+      }
+    } catch (error) {
+      this.app.debug(
+        `moving devices to the fleet key failed: ${String(error)}`,
+      );
+    }
+  }
+
+  get fleetKeyBusy(): boolean {
+    return this.fleetKeyChanging;
+  }
+
+  /**
+   * Replace the fleet key ("" removes it), carrying the devices that use it
+   * along, and save it to the plugin configuration without a restart.
+   */
+  async setFleetKey(next: string): Promise<FleetKeyChange> {
+    const settings = this.settings;
+    const keys = this.keys;
+    if (!this.started || settings === undefined || keys === undefined) {
+      throw new Error("the plugin is not running");
+    }
+    if (this.fleetKeyChanging) {
+      throw new Error("the fleet key is already being changed");
+    }
+    this.fleetKeyChanging = true;
+    try {
+      // A provisioning write already on the wire would land the old key on a
+      // device the change did not see; let it finish so it is carried along.
+      await this.keyWork;
+      this.provisionKeyWarned = false;
+      this.provisionTried.clear();
+      const result = await changeFleetKey({
+        keys,
+        devices: this.fleet.list(),
+        newKey: next,
+        save: async (key) => {
+          await this.saveFleetKey(key);
+          settings.auth.fleetKey = key;
+        },
+        clientFor: (id) => this.clientFor(id),
+      });
+      for (const id of result.updated) {
+        this.app.debug(`${id}: moved to the new fleet key`);
+      }
+      for (const id of result.kept) {
+        this.app.debug(`${id}: still on a previous fleet key`);
+      }
+      return result;
+    } finally {
+      this.fleetKeyChanging = false;
+    }
+  }
+
+  /**
+   * Write auth.fleetKey into the saved configuration, leaving every other
+   * field as the user saved it: writing the merged settings back would freeze
+   * today's defaults into the file.
+   */
+  private async saveFleetKey(key: string): Promise<void> {
+    const stored = this.app.readPluginOptions() as {
+      configuration?: Record<string, unknown>;
+    };
+    const configuration = stored.configuration ?? {};
+    const auth =
+      typeof configuration.auth === "object" && configuration.auth !== null
+        ? (configuration.auth as Record<string, unknown>)
+        : {};
+    await new Promise<void>((resolve, reject) => {
+      this.app.savePluginOptions(
+        { ...configuration, auth: { ...auth, fleetKey: key } },
+        (error) => {
+          if (error) reject(error);
+          else resolve();
+        },
+      );
+    });
   }
 
   /** A client for one device, with its key attached when we have one. */
