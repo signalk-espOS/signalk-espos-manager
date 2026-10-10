@@ -35,6 +35,8 @@ export class DeviceHttpError extends Error {
     readonly status: number,
     /** Seconds the device asked us to wait, when it said. */
     readonly retryAfterS?: number,
+    /** espOS's machine-readable `error` word ("busy", "coprocessor_busy"). */
+    readonly code?: string,
   ) {
     super(message);
     this.name = "DeviceHttpError";
@@ -150,12 +152,14 @@ export class DeviceClient {
         // with no body, or with something that is not JSON, still gets the
         // plain status.
         let detail = "";
+        let code: string | undefined;
         try {
           const body = (await response.json()) as unknown;
           if (typeof body === "object" && body !== null) {
             const b = body as Record<string, unknown>;
             const msg = typeof b["message"] === "string" ? b["message"] : "";
             const where = typeof b["path"] === "string" ? b["path"] : "";
+            if (typeof b["error"] === "string") code = b["error"];
             if (msg !== "") {
               detail = where === "" ? `: ${msg}` : `: ${where} \u2014 ${msg}`;
             }
@@ -167,6 +171,7 @@ export class DeviceClient {
           `device answered HTTP ${response.status} for ${path}${detail}`,
           response.status,
           retryAfterSeconds(response),
+          code,
         );
       }
       if (response.status === 204) return undefined;

@@ -29,6 +29,7 @@ interface Script {
   /** Successive /system/ping replies; a null entry means "refuse to answer". */
   pings: (Record<string, unknown> | null)[];
   installStatus?: number;
+  installBody?: unknown;
   confirmCalls?: number;
 }
 
@@ -62,7 +63,7 @@ async function startDevice(script: Script): Promise<{
     if (url === "/api/v1/ota" && req.method === "POST") {
       req.resume();
       req.on("end", () => {
-        send(script.installStatus ?? 202, {});
+        send(script.installStatus ?? 202, script.installBody ?? {});
       });
       return;
     }
@@ -234,6 +235,24 @@ describe("OtaJob", () => {
     });
     const view = await new OtaJob(jobOptions(device.client)).run();
     expect(view.state).toBe("done");
+  });
+
+  it("fails rather than adopting a 409 for a radio co-processor update", async () => {
+    // espOS 0.17.0+ refuses an install while the C6 is being flashed. There
+    // is no install to adopt: watching would find the device idle and fail
+    // with "did not start" or a stale error instead of the real reason.
+    const device = await startDevice({
+      installStatus: 409,
+      installBody: {
+        error: "coprocessor_busy",
+        message: "a radio co-processor update is running; retry after it",
+      },
+      statuses: [{ state: "idle" }],
+      pings: [{ app: "cockpit", version: "1.1.0", auth: false }],
+    });
+    const view = await new OtaJob(jobOptions(device.client)).run();
+    expect(view.state).toBe("failed");
+    expect(view.error).toMatch(/co-processor update is running/);
   });
 
   it("reports a device that came back on the old version", async () => {
