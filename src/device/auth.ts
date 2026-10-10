@@ -21,6 +21,10 @@ const DEFAULT_LOCKOUT_S = 30;
 interface StoredKey {
   key: string;
   setAt: number;
+  /**
+   * "fleet": a previous fleet key the device was left on when the fleet key
+   * changed, kept until it can be moved to the current one.
+   */
   source: "fleet" | "manual";
 }
 
@@ -91,6 +95,19 @@ export class KeyStore {
 
   setFleetKey(key: string): void {
     this.fleet = key.trim();
+  }
+
+  /** The fleet key in use; "" when there is none. */
+  get fleetKey(): string {
+    return this.fleet;
+  }
+
+  /** The previous fleet key this device is still on, if it is. */
+  pinnedFleetKey(id: DeviceId): string | undefined {
+    const stored = this.keys[id];
+    return stored?.source === "fleet" && stored.key !== ""
+      ? stored.key
+      : undefined;
   }
 
   /** The key to use for a device: its own if stored, else the fleet key. */

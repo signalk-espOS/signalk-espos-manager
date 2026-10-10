@@ -1,6 +1,7 @@
 import { api, isJobFinished, type DeviceDto } from "../api.js";
 import { deviceUrl } from "../deviceUrl.js";
 import { useStore } from "../store.js";
+import { FleetKeyCard } from "./FleetKey.js";
 
 /** Human-readable reachability, since the raw words are jargon. */
 function reachabilityLabel(device: DeviceDto): {
@@ -41,16 +42,19 @@ export function FleetPage() {
 
   if (fleet.devices.length === 0) {
     return (
-      <div class="card">
-        <h2>No devices found yet</h2>
-        <p class="muted">
-          Devices announce themselves over mDNS. If one is on a different
-          network segment, add its address under Plugin Config.
-        </p>
-        <button onClick={() => void act("Rescan", () => api.rescan())}>
-          Look again
-        </button>
-      </div>
+      <>
+        <div class="card">
+          <h2>No devices found yet</h2>
+          <p class="muted">
+            Devices announce themselves over mDNS. If one is on a different
+            network segment, add its address under Plugin Config.
+          </p>
+          <button onClick={() => void act("Rescan", () => api.rescan())}>
+            Look again
+          </button>
+        </div>
+        <FleetKeyCard />
+      </>
     );
   }
 
@@ -177,6 +181,8 @@ export function FleetPage() {
           );
         })}
       </ul>
+
+      <FleetKeyCard />
 
       <p class="muted small">
         Devices are found over mDNS on this network. Nothing is changed on a

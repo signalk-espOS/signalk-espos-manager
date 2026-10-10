@@ -95,15 +95,24 @@ export const DiscoverySchema = Type.Object(discoveryProperties, {
 
 export const AuthSchema = Type.Object(
   {
-    fleetKey: Type.String({
-      title: "Fleet API key",
-      default: "",
-      description:
-        "One key for every espOS device on this boat. Devices that ask for " +
-        "a key are contacted with it; devices that use a different key can " +
-        "be given their own below. Leave empty if no device has a key set. " +
-        "This is the devices' web login, not a firmware signing key.",
-    }),
+    // Optional, not just defaulted to "": the Admin UI marks every property
+    // in `required` with an asterisk and refuses to save the form once the
+    // field has been emptied, which made a key look mandatory on a fresh
+    // install. applyDefaults still fills in "".
+    fleetKey: Type.Optional(
+      Type.String({
+        title: "Fleet API key",
+        default: "",
+        description:
+          "Optional. One key for every espOS device on this boat. Devices " +
+          "that ask for a key are contacted with it; devices that use a " +
+          "different key can be given their own on their page in the espOS " +
+          "Manager. Leave empty if no device has a key set. The espOS " +
+          "Manager page can also generate, replace or remove it, and moves " +
+          "the devices along. This is the devices' web login, not a " +
+          "firmware signing key.",
+      }),
+    ),
     autoProvision: Type.Boolean({
       title: "Set the fleet key on open devices",
       default: false,

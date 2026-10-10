@@ -108,6 +108,15 @@ export interface FleetDto {
     updatesAvailable: number;
   };
   warnings: string[];
+  fleetKey?: { set: boolean; autoProvision: boolean };
+}
+
+export interface FleetKeyChangeDto {
+  ok: boolean;
+  updated: string[];
+  kept: string[];
+  /** Only when the server generated the key. */
+  key?: string;
 }
 
 export interface AvailableDto {
@@ -234,6 +243,15 @@ export const api = {
       method: "POST",
       body: { key },
     }),
+  generateFleetKey: () =>
+    call<FleetKeyChangeDto>("/fleet-key", {
+      method: "POST",
+      body: { generate: true },
+    }),
+  setFleetKey: (key: string) =>
+    call<FleetKeyChangeDto>("/fleet-key", { method: "POST", body: { key } }),
+  removeFleetKey: () =>
+    call<FleetKeyChangeDto>("/fleet-key", { method: "DELETE" }),
   configureOta: (id: string) =>
     call<{ ok: boolean; manifestPath: string; restartRequired: boolean }>(
       `/fleet/${encodeURIComponent(id)}/configure-ota`,
