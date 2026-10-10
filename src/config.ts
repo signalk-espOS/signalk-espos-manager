@@ -5,6 +5,7 @@
 
 import { Type, type Static } from "typebox";
 import { Value } from "typebox/value";
+import { DEFAULT_REFRESH_H } from "./registry/client.js";
 
 export const PLUGIN_ID = "signalk-espos-manager";
 export const PLUGIN_NAME = "espOS Manager";
@@ -143,7 +144,10 @@ export const RegistrySchema = Type.Object(
     }),
     refreshH: Type.Integer({
       title: "Refresh interval",
-      default: 12,
+      // One conditional request: an unchanged list costs a 304 and no body,
+      // so checking hourly is cheap even on a metered connection. 12 left a
+      // new release unseen for half a day.
+      default: DEFAULT_REFRESH_H,
       minimum: 1,
       maximum: 168,
       description: "How often to look for registry changes, in hours.",
@@ -205,7 +209,7 @@ export const OtaSchema = Type.Object(
     }),
     maxConcurrent: Type.Integer({
       title: "Simultaneous updates",
-      default: 1,
+      default: DEFAULT_REFRESH_H,
       minimum: 1,
       maximum: 4,
       description:

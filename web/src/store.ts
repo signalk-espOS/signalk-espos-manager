@@ -70,6 +70,8 @@ interface ManagerState {
   go: (page: Page, deviceId?: string) => void;
   refresh: () => Promise<void>;
   loadAvailable: (id: string) => Promise<void>;
+  /** Re-read the firmware list now; throws when it could not be fetched. */
+  refreshRegistry: () => Promise<void>;
   act: (
     what: string,
     fn: () => Promise<unknown>,
@@ -180,6 +182,19 @@ export const useStore = create<ManagerState>((set, get) => ({
           [id]: { reason: describe(error) },
         },
       }));
+    }
+  },
+
+  refreshRegistry: async () => {
+    const result = await api.refreshRegistry();
+    // Read back here rather than left to the next poll: a poll already in
+    // flight skips the registry, or lands the copy from before the refresh,
+    // and "checked 7 h ago" would sit next to "done".
+    set({ registry: await api.registry() });
+    if (!result.ok) {
+      throw new Error(
+        result.reason ?? "the firmware list could not be fetched",
+      );
     }
   },
 

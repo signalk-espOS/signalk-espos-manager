@@ -13,7 +13,11 @@ import { FleetPoller } from "./fleet/poller.js";
 import { FleetState } from "./fleet/state.js";
 import { publishFleetDeltas } from "./fleet/deltas.js";
 import { FirmwareStore } from "./mirror/store.js";
-import { RegistryClient, type IndexResult } from "./registry/client.js";
+import {
+  DEFAULT_REFRESH_H,
+  RegistryClient,
+  type IndexResult,
+} from "./registry/client.js";
 import { OtaOrchestrator } from "./ota/orchestrator.js";
 import type { JobView } from "./ota/job.js";
 import { DeviceClient } from "./device/client.js";
@@ -197,7 +201,8 @@ export class ManagerService {
         warnings: [],
       };
     }
-    const maxAgeMs = (this.settings?.registry.refreshH ?? 12) * 3600 * 1000;
+    const maxAgeMs =
+      (this.settings?.registry.refreshH ?? DEFAULT_REFRESH_H) * 3600 * 1000;
     this.registryState = await client.getIndex({ maxAgeMs, force });
     return this.registryState;
   }

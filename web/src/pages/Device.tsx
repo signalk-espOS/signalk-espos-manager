@@ -9,6 +9,19 @@ function bytes(value: number | undefined): string {
   return `${(value / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+/** "5 min ago", for when the firmware list was last fetched. */
+function ago(iso: string | undefined, now: number): string | undefined {
+  if (iso === undefined) return undefined;
+  const at = Date.parse(iso);
+  if (Number.isNaN(at)) return undefined;
+  const minutes = Math.max(0, Math.floor((now - at) / 60000));
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${minutes} min ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 48) return `${hours} h ago`;
+  return `${Math.floor(hours / 24)} days ago`;
+}
+
 function uptime(seconds: number | undefined): string | undefined {
   if (seconds === undefined) return undefined;
   const days = Math.floor(seconds / 86400);
@@ -23,6 +36,8 @@ export function DevicePage() {
     fleet,
     selectedDevice,
     available,
+    registry,
+    refreshRegistry,
     jobs,
     go,
     act,
@@ -46,6 +61,8 @@ export function DevicePage() {
   // button stays disabled while this device's fix runs, so it cannot be sent
   // twice.
   const fixOtaKey = `configure-ota:${device.id}`;
+  const checkKey = `check-updates:${device.id}`;
+  const checked = ago(registry?.fetchedAt, Date.now());
   const offer = available[device.id];
   const job = jobs?.jobs.find((j) => j.deviceId === device.id);
   const busy = job !== undefined && !isJobFinished(job);
@@ -295,6 +312,27 @@ export function DevicePage() {
               </>
             )}
           </div>
+        )}
+
+        {!busy && (
+          <p class="small muted">
+            {/* "Up to date" is only as fresh as the copy of the firmware
+                list it was worked out from, so say how old that is. */}
+            {checked !== undefined
+              ? `Firmware list checked ${checked}. `
+              : "Firmware list not fetched yet. "}
+            <button
+              class="link"
+              disabled={acting.includes(checkKey)}
+              onClick={() =>
+                void act("Check for updates", refreshRegistry, {
+                  key: checkKey,
+                })
+              }
+            >
+              {acting.includes(checkKey) ? "Checking…" : "Check now"}
+            </button>
+          </p>
         )}
 
         {job !== undefined && job.state === "failed" && (

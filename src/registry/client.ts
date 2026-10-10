@@ -11,7 +11,7 @@
  * project's releases into the index so the plugin never calls the GitHub API.
  */
 
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { mergeIndexes } from "./resolve.js";
@@ -44,6 +44,9 @@ interface CacheEntry {
   fetchedAt: number;
   body: string;
 }
+
+/** How often to look for a new index, in hours, unless configured. */
+export const DEFAULT_REFRESH_H = 1;
 
 const EMPTY: RegistryIndex = { schema: 1, projects: [] };
 
@@ -150,7 +153,11 @@ export class RegistryClient {
   private async writeCache(entry: CacheEntry): Promise<void> {
     await mkdir(this.options.cacheDir, { recursive: true });
     const path = this.cachePath(entry.url);
-    const tmp = `${path}.tmp`;
+    // A temporary name of its own: the UI poll, an update check and Check
+    // now can refresh at the same moment, and with one shared name the
+    // second rename finds the file already moved and reports the registry
+    // unreachable.
+    const tmp = `${path}.${randomUUID()}.tmp`;
     await writeFile(tmp, JSON.stringify(entry), "utf8");
     await rename(tmp, path);
   }
@@ -241,7 +248,7 @@ export class RegistryClient {
   async getIndex(
     options: { maxAgeMs?: number; force?: boolean } = {},
   ): Promise<IndexResult> {
-    const maxAgeMs = options.maxAgeMs ?? 12 * 3600 * 1000;
+    const maxAgeMs = options.maxAgeMs ?? DEFAULT_REFRESH_H * 3600 * 1000;
     const urls = [
       this.options.indexUrl,
       ...(this.options.extraIndexUrls ?? []),

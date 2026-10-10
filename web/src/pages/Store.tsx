@@ -1,4 +1,3 @@
-import { api } from "../api.js";
 import { useStore } from "../store.js";
 
 function bytes(value: number): string {
@@ -7,7 +6,7 @@ function bytes(value: number): string {
 }
 
 export function StorePage() {
-  const { registry, fleet, mirror, act } = useStore();
+  const { registry, fleet, mirror, act, refreshRegistry } = useStore();
 
   if (registry === undefined) {
     return <p class="muted">Loading the firmware list…</p>;
@@ -34,9 +33,7 @@ export function StorePage() {
         </span>
         <span class="spacer" />
         <button
-          onClick={() =>
-            void act("Refresh firmware list", () => api.refreshRegistry())
-          }
+          onClick={() => void act("Refresh firmware list", refreshRegistry)}
         >
           Refresh
         </button>

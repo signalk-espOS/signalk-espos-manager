@@ -658,6 +658,17 @@ describe("RegistryClient", () => {
     expect(result.index.projects).toHaveLength(2);
   });
 
+  it("survives refreshes that overlap", async () => {
+    // The UI poll, an update check and Check now can all refresh at once.
+    const url = await serveIndex(index, { etag: '"v1"' });
+    const client = new RegistryClient({ cacheDir, indexUrl: url });
+    await client.getIndex();
+    const results = await Promise.all(
+      Array.from({ length: 8 }, () => client.getIndex({ force: true })),
+    );
+    for (const result of results) expect(result.stale).toBe(false);
+  });
+
   it("serves the cache when the registry is unreachable", async () => {
     // The whole point: a store that still works at anchor.
     const url = await serveIndex(index);
