@@ -190,7 +190,11 @@ export const useStore = create<ManagerState>((set, get) => ({
     // Read back here rather than left to the next poll: a poll already in
     // flight skips the registry, or lands the copy from before the refresh,
     // and "checked 7 h ago" would sit next to "done".
-    set({ registry: await api.registry() });
+    try {
+      set({ registry: await api.registry() });
+    } catch {
+      // Keep the copy we had: the refresh's own outcome below is the news.
+    }
     if (!result.ok) {
       throw new Error(
         result.reason ?? "the firmware list could not be fetched",

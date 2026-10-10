@@ -209,7 +209,7 @@ export const OtaSchema = Type.Object(
     }),
     maxConcurrent: Type.Integer({
       title: "Simultaneous updates",
-      default: DEFAULT_REFRESH_H,
+      default: 1,
       minimum: 1,
       maximum: 4,
       description:
