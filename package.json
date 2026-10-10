@@ -54,6 +54,7 @@
     "url": "https://github.com/signalk-espOS/signalk-espos-manager/issues"
   },
   "homepage": "https://github.com/signalk-espOS/signalk-espos-manager#readme",
+  "signalk-plugin-enabled-by-default": true,
   "signalk": {
     "displayName": "espOS Manager",
     "appIcon": "./icon.svg"
