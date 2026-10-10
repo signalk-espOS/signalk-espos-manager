@@ -11,7 +11,7 @@
  * project's releases into the index so the plugin never calls the GitHub API.
  */
 
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { mergeIndexes } from "./resolve.js";
@@ -43,6 +43,16 @@ interface CacheEntry {
   etag?: string;
   fetchedAt: number;
   body: string;
+}
+
+/** How often to look for a new index, in hours, unless configured. */
+export const DEFAULT_REFRESH_H = 1;
+
+interface FetchResult {
+  index: RegistryIndex;
+  stale: boolean;
+  fetchedAt?: number;
+  reason?: string;
 }
 
 const EMPTY: RegistryIndex = { schema: 1, projects: [] };
@@ -112,6 +122,13 @@ export class RegistryClient {
   private readonly log: (message: string) => void;
   private readonly now: () => number;
   private readonly fetchImpl: typeof fetch;
+  /**
+   * One live fetch per URL at a time. The UI poll, an update check and Check
+   * now can all ask at once; each would write the cache, and on Windows a
+   * rename onto a file another rename is replacing fails with EPERM, which
+   * reads as an unreachable registry. Later callers share the first answer.
+   */
+  private readonly inflight = new Map<string, Promise<FetchResult>>();
 
   constructor(private readonly options: RegistryClientOptions) {
     this.log = options.log ?? ((): void => {});
@@ -150,22 +167,33 @@ export class RegistryClient {
   private async writeCache(entry: CacheEntry): Promise<void> {
     await mkdir(this.options.cacheDir, { recursive: true });
     const path = this.cachePath(entry.url);
-    const tmp = `${path}.tmp`;
+    // A name of its own, for two clients sharing one cache directory; one
+    // client's own writes are already one at a time (`inflight`).
+    const tmp = `${path}.${randomUUID()}.tmp`;
     await writeFile(tmp, JSON.stringify(entry), "utf8");
     await rename(tmp, path);
   }
 
   /** Fetch one index URL, falling back to its cache. */
-  private async fetchOne(
+  private fetchOne(
     url: string,
     maxAgeMs: number,
     force: boolean,
-  ): Promise<{
-    index: RegistryIndex;
-    stale: boolean;
-    fetchedAt?: number;
-    reason?: string;
-  }> {
+  ): Promise<FetchResult> {
+    const running = this.inflight.get(url);
+    if (running !== undefined) return running;
+    const started = this.fetchFresh(url, maxAgeMs, force).finally(() => {
+      this.inflight.delete(url);
+    });
+    this.inflight.set(url, started);
+    return started;
+  }
+
+  private async fetchFresh(
+    url: string,
+    maxAgeMs: number,
+    force: boolean,
+  ): Promise<FetchResult> {
     const cached = await this.readCache(url);
     const cachedIndex =
       cached === undefined ? undefined : tryParse(cached.body);
@@ -241,7 +269,7 @@ export class RegistryClient {
   async getIndex(
     options: { maxAgeMs?: number; force?: boolean } = {},
   ): Promise<IndexResult> {
-    const maxAgeMs = options.maxAgeMs ?? 12 * 3600 * 1000;
+    const maxAgeMs = options.maxAgeMs ?? DEFAULT_REFRESH_H * 3600 * 1000;
     const urls = [
       this.options.indexUrl,
       ...(this.options.extraIndexUrls ?? []),

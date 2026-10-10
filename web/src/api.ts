@@ -235,7 +235,9 @@ export const api = {
 
   rescan: () => call<{ ok: boolean }>("/discovery/rescan", { method: "POST" }),
   refreshRegistry: () =>
-    call<{ ok: boolean }>("/registry/refresh", { method: "POST" }),
+    call<{ ok: boolean; reason?: string }>("/registry/refresh", {
+      method: "POST",
+    }),
   resumeJobs: () => call<{ ok: boolean }>("/jobs/resume", { method: "POST" }),
 
   setKey: (id: string, key: string) =>
