@@ -110,6 +110,20 @@ export interface CoprocessorInfo {
   stale?: boolean;
 }
 
+export type CoprocessorUpdateState =
+  "idle" | "downloading" | "verifying" | "writing" | "restarting" | "failed";
+
+/** `GET /api/v1/system/coprocessor/update`, espOS 0.17.0+ on a board with a co-processor. */
+export interface CoprocessorUpdateStatus {
+  state: CoprocessorUpdateState;
+  /** Bytes through the current phase, with `total`, while one runs. */
+  done?: number;
+  total?: number;
+  error?: string;
+  /** The one image this firmware accepts: its build pins the hash. */
+  image?: { version: string; sha256: string; url: string };
+}
+
 /** The hardware block espOS 0.10.0+ reports; absent on older firmware. */
 export interface HardwareInfo {
   mac?: string;

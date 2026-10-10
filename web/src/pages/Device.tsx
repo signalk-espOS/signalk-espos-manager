@@ -1,6 +1,7 @@
 import { useState } from "preact/hooks";
 import { api, isJobFinished } from "../api.js";
 import { useStore } from "../store.js";
+import { CoprocessorCard } from "./Coprocessor.js";
 
 function bytes(value: number | undefined): string {
   if (value === undefined) return "";
@@ -224,6 +225,8 @@ export function DevicePage() {
           )}
         </div>
       )}
+
+      <CoprocessorCard key={device.id} device={device} />
 
       <div class="card">
         <h3>Firmware updates</h3>

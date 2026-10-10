@@ -25,6 +25,16 @@ export class ApiError extends Error {
   }
 }
 
+/** The device's co-processor update, as `GET /fleet/:id/coprocessor` relays it. */
+export interface CoprocessorDto {
+  state:
+    "idle" | "downloading" | "verifying" | "writing" | "restarting" | "failed";
+  done?: number;
+  total?: number;
+  error?: string;
+  image?: { version: string; sha256: string; url: string };
+}
+
 async function call<T>(
   path: string,
   init?: { method?: string; body?: unknown },
@@ -270,6 +280,12 @@ export const api = {
     }),
   rollback: (id: string) =>
     call<{ ok: boolean }>(`/fleet/${encodeURIComponent(id)}/rollback`, {
+      method: "POST",
+    }),
+  coprocessor: (id: string) =>
+    call<CoprocessorDto>(`/fleet/${encodeURIComponent(id)}/coprocessor`),
+  updateCoprocessor: (id: string) =>
+    call<{ ok: boolean }>(`/fleet/${encodeURIComponent(id)}/coprocessor`, {
       method: "POST",
     }),
   cancelJob: (id: string) =>

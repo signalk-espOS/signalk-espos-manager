@@ -11,8 +11,17 @@
  *    never rotated through automatically.
  */
 
-import type { OtaStatus, SystemInfo } from "../types.js";
-import { parseOtaStatus, parsePing, parseSystemInfo } from "./parse.js";
+import type {
+  CoprocessorUpdateStatus,
+  OtaStatus,
+  SystemInfo,
+} from "../types.js";
+import {
+  parseCoprocessorUpdate,
+  parseOtaStatus,
+  parsePing,
+  parseSystemInfo,
+} from "./parse.js";
 
 export interface PingResult {
   app: string;
@@ -215,6 +224,25 @@ export class DeviceClient {
 
   async otaRollback(): Promise<void> {
     await this.request("/ota/rollback", { method: "POST", body: {} });
+  }
+
+  /** 404 on firmware without the endpoint: older espOS, or no co-processor. */
+  async coprocessorStatus(): Promise<CoprocessorUpdateStatus> {
+    return parseCoprocessorUpdate(
+      await this.request("/system/coprocessor/update"),
+    );
+  }
+
+  /**
+   * Flash the radio co-processor. The device fetches the image itself and
+   * refuses any whose SHA-256 is not the one its firmware pins, so the URL
+   * only says where to find it. Without one it uses its built-in URL.
+   */
+  async coprocessorUpdate(url?: string): Promise<void> {
+    await this.request("/system/coprocessor/update", {
+      method: "POST",
+      body: url === undefined ? {} : { url },
+    });
   }
 
   /** Full device configuration, namespace by namespace. */

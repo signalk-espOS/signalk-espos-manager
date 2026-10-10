@@ -20,7 +20,8 @@ import {
 } from "./registry/client.js";
 import { OtaOrchestrator } from "./ota/orchestrator.js";
 import type { JobView } from "./ota/job.js";
-import { DeviceClient } from "./device/client.js";
+import type { CoprocessorUpdateStatus } from "./types.js";
+import { DeviceClient, DeviceHttpError } from "./device/client.js";
 import { fleetKeyUsable, provisionFleetKey } from "./device/provision.js";
 import {
   changeFleetKey,
@@ -65,6 +66,16 @@ export class ManagerService {
   private registry?: RegistryClient;
   private registryState?: IndexResult;
   private readonly manifestWrites = new Map<string, Promise<void>>();
+  /**
+   * Co-processor updates this server started, by device: when, and whether
+   * the device was sent to the mirror. Ends with a device restart, which a
+   * firmware update must not race, and a device that could not download from
+   * the mirror is sent to its own URL next time.
+   */
+  private readonly coprocessorRuns = new Map<
+    string,
+    { at: number; mirrored: boolean }
+  >();
   private manifestRefresh?: Promise<void>;
   private orchestrator?: OtaOrchestrator;
   private mirror: { mode: MirrorMode; reason?: string } = {
@@ -548,6 +559,14 @@ export class ManagerService {
         error: "an update is already running for this device",
       };
     }
+    if (this.coprocessorBusy(id)) {
+      return {
+        ok: false,
+        error:
+          "the radio co-processor is being updated and the device restarts " +
+          "when it is done; install the firmware after that",
+      };
+    }
 
     const { index } = await this.getIndex();
     const project = projectForApp(index, snapshot.app);
@@ -648,6 +667,161 @@ export class ManagerService {
       return { ok: false, error: queued.reason };
     }
     return { ok: true, job: orch.get(id) };
+  }
+
+  /**
+   * The co-processor update status, or why this device cannot do one: its
+   * firmware predates the endpoint (espOS before 0.17.0), or it has no
+   * co-processor to update.
+   */
+  async coprocessorStatus(
+    id: string,
+  ): Promise<
+    | { ok: true; status: CoprocessorUpdateStatus }
+    | { ok: false; status?: number; error: string }
+  > {
+    const client = this.clientFor(id);
+    if (client === undefined) {
+      return {
+        ok: false,
+        status: 404,
+        error: "no address known for this device",
+      };
+    }
+    try {
+      const status = await client.coprocessorStatus();
+      const run = this.coprocessorRuns.get(id);
+      if (
+        run !== undefined &&
+        (status.state === "idle" || status.state === "failed")
+      ) {
+        // Over, so a firmware update may go ahead; how it went still decides
+        // where the next attempt downloads from.
+        this.coprocessorRuns.set(id, { ...run, at: 0 });
+      }
+      return { ok: true, status };
+    } catch (error) {
+      if (error instanceof DeviceHttpError && error.status === 404) {
+        return { ok: false, status: 404, error: COPROCESSOR_UNSUPPORTED };
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Have the device flash its radio co-processor, from this server's mirror
+   * when there is one so it works at anchor.
+   *
+   * The device names the image (its firmware pins version and SHA-256), the
+   * mirror downloads it and checks that hash, and the device checks it again
+   * before writing a byte to the co-processor. A mirror that cannot fetch it
+   * leaves the device to use its own built-in URL, which needs internet.
+   */
+  async startCoprocessorUpdate(
+    id: string,
+  ): Promise<{ ok: boolean; status?: number; error?: string }> {
+    const device = this.fleet.get(id);
+    if (device === undefined) {
+      return { ok: false, status: 404, error: `no device ${id}` };
+    }
+    if (this.orchestrator?.isBusy(id) === true) {
+      return {
+        ok: false,
+        error:
+          "a firmware update is running for this device; wait for it to finish",
+      };
+    }
+    const current = await this.coprocessorStatus(id);
+    if (!current.ok) return current;
+    const { image, state, error: lastError } = current.status;
+    if (state !== "idle" && state !== "failed") {
+      return { ok: false, error: "the co-processor update is already running" };
+    }
+    // Shape-checked before the server fetches anything: the device names the
+    // image, and only an https release with a well-formed hash is mirrored.
+    if (
+      image === undefined ||
+      !/^https:\/\//.test(image.url) ||
+      !/^[0-9a-f]{64}$/.test(image.sha256)
+    ) {
+      return {
+        ok: false,
+        error: "the device did not say which co-processor image it accepts",
+      };
+    }
+
+    // The last run from our mirror failed to download: the device cannot reach
+    // this server's address, so let it fetch the image itself this time.
+    const previous = this.coprocessorRuns.get(id);
+    const mirrorUnreachable =
+      state === "failed" &&
+      previous?.mirrored === true &&
+      /^(could not connect|the server answered|the download stopped|no usable Content-Length)/.test(
+        lastError ?? "",
+      );
+
+    let url: string | undefined;
+    const store = this.store;
+    if (
+      store !== undefined &&
+      this.mirror.mode === "mirror" &&
+      !mirrorUnreachable
+    ) {
+      const filename = filenameFromUrl(image.url);
+      // The hash in the folder name keeps two images that share a version
+      // (another co-processor chip, a rebuilt pin) from sharing a file.
+      const version = `${image.version}-${image.sha256.slice(0, 12)}`;
+      try {
+        await store.ensure({
+          url: image.url,
+          app: COPROCESSOR_APP,
+          version,
+          filename,
+          expectedBytes: COPROCESSOR_IMAGE_MAX_BYTES,
+          sha256: image.sha256,
+        });
+        url = `${this.originReachableFrom(device.identity.addresses[0])}${firmwareUrlFor(
+          COPROCESSOR_APP,
+          version,
+          filename,
+          PUBLIC_FW_BASE,
+        )}`;
+      } catch (error) {
+        this.app.debug(
+          `could not mirror the co-processor image ${filename}: ` +
+            `${String(error)} — the device will fetch it itself`,
+        );
+      }
+    }
+
+    const client = this.clientFor(id);
+    if (client === undefined) {
+      return { ok: false, error: "no address known for this device" };
+    }
+    try {
+      await client.coprocessorUpdate(url);
+    } catch (error) {
+      // busy, unconfirmed, a URL it cannot use: the device's own answer.
+      if (error instanceof DeviceHttpError && error.status < 500) {
+        return {
+          ok: false,
+          status: error.status === 404 ? 404 : 409,
+          error: error.message,
+        };
+      }
+      throw error;
+    }
+    this.coprocessorRuns.set(id, {
+      at: Date.now(),
+      mirrored: url !== undefined,
+    });
+    return { ok: true };
+  }
+
+  /** Whether a co-processor update this server started may still be running. */
+  private coprocessorBusy(id: string): boolean {
+    const run = this.coprocessorRuns.get(id);
+    return run !== undefined && Date.now() - run.at < COPROCESSOR_RUN_MS;
   }
 
   /**
@@ -824,6 +998,23 @@ export class ManagerService {
     }
   }
 }
+
+/** The mirror's folder for co-processor images, beside the apps' own. */
+const COPROCESSOR_APP = "espos-coprocessor";
+
+/** espOS refuses a larger image; the cache budget is checked against it. */
+const COPROCESSOR_IMAGE_MAX_BYTES = 4 * 1024 * 1024;
+
+/**
+ * Download, write and restart take a minute or two over SDIO; a firmware
+ * update is held off this long after one starts, unless a status read
+ * says it ended sooner.
+ */
+const COPROCESSOR_RUN_MS = 5 * 60 * 1000;
+
+const COPROCESSOR_UNSUPPORTED =
+  "this device's firmware cannot update its radio co-processor; install a " +
+  "firmware release built on espOS 0.17.0 or newer first";
 
 export { filenameFromUrl };
 

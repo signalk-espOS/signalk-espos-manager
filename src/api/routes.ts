@@ -566,6 +566,48 @@ export function registerRoutes(
     }),
   );
 
+  // GET /api/fleet/:id/coprocessor — the radio co-processor update's status.
+  router.get(
+    "/api/fleet/:id/coprocessor",
+    guard((req, res) => {
+      void (async () => {
+        try {
+          const result = await getService().coprocessorStatus(
+            req.params?.id ?? "",
+          );
+          if (!result.ok) {
+            res.status(result.status ?? 409).json({ error: result.error });
+            return;
+          }
+          res.json(result.status);
+        } catch (error) {
+          res.status(502).json({ error: errorMessage(error) });
+        }
+      })();
+    }),
+  );
+
+  // POST /api/fleet/:id/coprocessor — flash the radio co-processor.
+  router.post(
+    "/api/fleet/:id/coprocessor",
+    guard((req, res) => {
+      void (async () => {
+        try {
+          const result = await getService().startCoprocessorUpdate(
+            req.params?.id ?? "",
+          );
+          if (!result.ok) {
+            res.status(result.status ?? 409).json({ error: result.error });
+            return;
+          }
+          res.json({ ok: true });
+        } catch (error) {
+          res.status(502).json({ error: errorMessage(error) });
+        }
+      })();
+    }),
+  );
+
   // DELETE /api/fleet/:id — forget a device and its key.
   router.delete(
     "/api/fleet/:id",

@@ -16,6 +16,8 @@
 import type {
   AppName,
   CoprocessorInfo,
+  CoprocessorUpdateState,
+  CoprocessorUpdateStatus,
   DeviceOtaState,
   HardwareInfo,
   OtaStatus,
@@ -192,5 +194,38 @@ export function parseOtaStatus(raw: unknown): OtaStatus {
         : undefined,
     available,
     lastError: str(body.last_error),
+  };
+}
+
+const COPROCESSOR_STATES: readonly CoprocessorUpdateState[] = [
+  "idle",
+  "downloading",
+  "verifying",
+  "writing",
+  "restarting",
+  "failed",
+];
+
+/** `GET /api/v1/system/coprocessor/update` (protected). */
+export function parseCoprocessorUpdate(raw: unknown): CoprocessorUpdateStatus {
+  const body = asRecord(raw);
+  const text = str(body.state);
+  const image = asRecord(body.image);
+  const version = str(image.version);
+  const sha256 = str(image.sha256);
+  const url = str(image.url);
+  return {
+    state:
+      text !== undefined &&
+      (COPROCESSOR_STATES as readonly string[]).includes(text)
+        ? (text as CoprocessorUpdateState)
+        : "idle",
+    done: num(body.done),
+    total: num(body.total),
+    error: str(body.error),
+    image:
+      version !== undefined && sha256 !== undefined && url !== undefined
+        ? { version, sha256, url }
+        : undefined,
   };
 }
