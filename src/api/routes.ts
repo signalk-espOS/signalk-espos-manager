@@ -567,7 +567,7 @@ export function registerRoutes(
   );
 
   // GET /api/fleet/:id/coprocessor — the radio co-processor update's status.
-  router.get(
+  readonly.get(
     "/api/fleet/:id/coprocessor",
     guard((req, res) => {
       void (async () => {

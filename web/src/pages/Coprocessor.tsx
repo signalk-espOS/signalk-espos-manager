@@ -1,4 +1,4 @@
-import { useEffect, useState } from "preact/hooks";
+import { useEffect, useRef, useState } from "preact/hooks";
 import { api, ApiError, type CoprocessorDto, type DeviceDto } from "../api.js";
 import { useStore } from "../store.js";
 
@@ -8,6 +8,10 @@ const RUNNING: readonly CoprocessorDto["state"][] = [
   "writing",
   "restarting",
 ];
+
+// The device restarts at the end and is back within a minute or two; past
+// this, polling a device that stays silent only keeps a stale phase on screen.
+const SILENT_LIMIT_MS = 5 * 60 * 1000;
 
 const PHASE: Record<CoprocessorDto["state"], string> = {
   idle: "",
@@ -32,17 +36,22 @@ export function CoprocessorCard({ device }: { device: DeviceDto }) {
   // Set once this page has seen an update run, so "behind" turning false
   // afterwards reads as the success it is rather than the card vanishing.
   const [ran, setRan] = useState(false);
+  const [lost, setLost] = useState(false);
+  const lastAnswer = useRef(0);
 
   const stale = device.coprocessor?.stale === true;
-  const running = status !== undefined && RUNNING.includes(status.state);
+  const running =
+    status !== undefined && RUNNING.includes(status.state) && !lost;
   const key = `coprocessor:${device.id}`;
 
   const load = async (quietOnError: boolean): Promise<void> => {
     try {
       const next = await api.coprocessor(device.id);
+      lastAnswer.current = Date.now();
       setStatus(next);
       setProblem(undefined);
       setUnsupported(false);
+      setLost(false);
       if (RUNNING.includes(next.state)) setRan(true);
     } catch (error) {
       // Mid-update the device restarts and stops answering for a while; that
@@ -59,7 +68,15 @@ export function CoprocessorCard({ device }: { device: DeviceDto }) {
 
   useEffect(() => {
     if (!running) return;
+    lastAnswer.current = Date.now();
     const timer = setInterval(() => {
+      if (Date.now() - lastAnswer.current > SILENT_LIMIT_MS) {
+        setLost(true);
+        setProblem(
+          "the device has not answered for five minutes; check that it is powered and on the network",
+        );
+        return;
+      }
       void load(true);
     }, 2000);
     return () => {
