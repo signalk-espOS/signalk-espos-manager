@@ -109,6 +109,8 @@ function parseHardware(raw: unknown): HardwareInfo | undefined {
     mac: str(body.mac),
     cpuMhz: num(body.cpu_mhz),
     flashBytes: num(body.flash_bytes),
+    flashPhysicalBytes: num(body.flash_physical_bytes),
+    flashPartitionedBytes: num(body.flash_partitioned_bytes),
     ramInternalBytes: num(body.ram_internal_bytes),
     ramPsramBytes: num(body.ram_psram_bytes),
     features: strArray(body.features),

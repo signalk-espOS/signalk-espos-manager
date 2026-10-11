@@ -62,6 +62,10 @@ export function DevicePage() {
   // device neither shows as busy there nor lands its error on that card. The
   // button stays disabled while this device's fix runs, so it cannot be sent
   // twice.
+  // The chip's own size where espOS reports it, else what the image declares.
+  const flash = device.flashPhysicalBytes ?? device.flashBytes;
+  const mb = (bytes: number): number => Math.round(bytes / 1048576);
+
   const fixOtaKey = `configure-ota:${device.id}`;
   const checkKey = `check-updates:${device.id}`;
   const checked = ago(registry?.fetchedAt, Date.now());
@@ -167,18 +171,27 @@ export function DevicePage() {
               <dd>{device.mac}</dd>
             </>
           )}
-          {(device.flashBytes !== undefined ||
-            device.psramBytes !== undefined) && (
+          {(flash !== undefined || device.psramBytes !== undefined) && (
             <>
               <dt>Memory</dt>
               <dd>
-                {device.flashBytes !== undefined &&
-                  `${Math.round(device.flashBytes / 1048576)} MB flash`}
-                {device.flashBytes !== undefined &&
+                {flash !== undefined && `${mb(flash)} MB flash`}
+                {/* Only when the image was built for less than the chip: the
+                    rest of the chip is unused, which the bare size would hide.
+                    Every table ends a little short of its chip, so the
+                    partition end alone would be noise. */}
+                {device.flashPhysicalBytes !== undefined &&
+                  device.flashBytes !== undefined &&
+                  device.flashBytes < device.flashPhysicalBytes &&
+                  ` (firmware built for ${mb(device.flashBytes)} MB` +
+                    (device.flashPartitionedBytes !== undefined
+                      ? `, ${(device.flashPartitionedBytes / 1048576).toFixed(1)} MB partitioned)`
+                      : ")")}
+                {flash !== undefined &&
                   device.psramBytes !== undefined &&
                   " · "}
                 {device.psramBytes !== undefined &&
-                  `${Math.round(device.psramBytes / 1048576)} MB PSRAM`}
+                  `${mb(device.psramBytes)} MB PSRAM`}
               </dd>
             </>
           )}

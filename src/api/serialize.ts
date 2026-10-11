@@ -40,7 +40,12 @@ export interface DeviceDto {
   useCases?: { id: string; title: string }[];
   chip?: string;
   mac?: string;
+  /** The size the firmware image was built for. */
   flashBytes?: number;
+  /** The chip's own size, when espOS reports it. */
+  flashPhysicalBytes?: number;
+  /** How much of the chip the partition table uses, when espOS reports it. */
+  flashPartitionedBytes?: number;
   psramBytes?: number;
   /** A separate radio chip's firmware, when the board has one. */
   coprocessor?: CoprocessorInfo;
@@ -120,6 +125,8 @@ export function serializeDevice(
     // a panel misbehaves, and the alternative is curl plus a datasheet.
     mac: info?.hardware?.mac,
     flashBytes: info?.hardware?.flashBytes,
+    flashPhysicalBytes: info?.hardware?.flashPhysicalBytes,
+    flashPartitionedBytes: info?.hardware?.flashPartitionedBytes,
     psramBytes: info?.hardware?.ramPsramBytes,
     coprocessor: info?.hardware?.coprocessor,
     coprocessorStale: info?.hardware?.coprocessor?.stale,

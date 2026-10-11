@@ -91,6 +91,21 @@ describe("parseSystemInfo", () => {
     expect(info.hardware?.features).toEqual(["wifi", "ble"]);
   });
 
+  it("reads the chip's flash apart from the size the image declares", () => {
+    const info = parseSystemInfo({
+      app: "cockpit",
+      version: "1.5.3",
+      hardware: {
+        flash_bytes: 16777216,
+        flash_physical_bytes: 33554432,
+        flash_partitioned_bytes: 15794176,
+      },
+    });
+    expect(info.hardware?.flashBytes).toBe(16777216);
+    expect(info.hardware?.flashPhysicalBytes).toBe(33554432);
+    expect(info.hardware?.flashPartitionedBytes).toBe(15794176);
+  });
+
   it("reads a co-processor report with its target", () => {
     const info = parseSystemInfo({
       hardware: {
