@@ -83,6 +83,13 @@ and where to buy it. Someone who already has a board picks **I already have
 a board** and finds it in the list, or plugs it in to filter by chip. The jobs
 and boards come from the registry's `usecases/` and `boards/` catalogue.
 
+Plugging a board in also reads, without changing anything, the USB chip it
+connects through and the name and version of the firmware already on it. When
+that points at one catalogue board (the maker's demo it shipped with, or an
+espOS project made only for that board), the page says "This looks like…" and
+lists that board first. A shared USB chip on its own is only a hint, because
+one vendor puts the same chip on many boards.
+
 ### Updating a device
 
 1. Open the device from **Devices**. Its **Firmware updates** card shows the

@@ -111,6 +111,11 @@ export interface HardwareBoard {
   imageCredit?: string;
   buyUrl?: string;
   notes?: string;
+  flashBytes?: number;
+  /** A hint toward this board when plugged in; many boards share a bridge. */
+  usbBridge?: { chip?: string; vid?: string; pid?: string };
+  /** Project names the vendor's own demo firmware reports. */
+  factoryApps?: string[];
 }
 
 /** One board a use case recommends, already ranked by the registry. */
