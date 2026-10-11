@@ -12,6 +12,7 @@ import { KeyStore } from "./device/auth.js";
 import { FleetPoller } from "./fleet/poller.js";
 import { FleetState } from "./fleet/state.js";
 import { publishFleetDeltas } from "./fleet/deltas.js";
+import { DayNightPublisher } from "./sky/dayNight.js";
 import { FirmwareStore } from "./mirror/store.js";
 import {
   DEFAULT_REFRESH_H,
@@ -79,6 +80,7 @@ export class ManagerService {
   >();
   private manifestRefresh?: Promise<void>;
   private orchestrator?: OtaOrchestrator;
+  private dayNight?: DayNightPublisher;
   private mirror: { mode: MirrorMode; reason?: string } = {
     mode: "upstream",
     reason: "not started",
@@ -100,6 +102,13 @@ export class ManagerService {
     if (this.started) await this.stop();
     this.settings = settings;
     this.started = true;
+
+    // First, so a key store or mirror failure below cannot take the panels'
+    // night dimming down with it.
+    if (settings.dayNight.publishMode) {
+      this.dayNight = new DayNightPublisher(this.app, PLUGIN_ID);
+      this.dayNight.start();
+    }
 
     try {
       const dataDir = this.app.getDataDirPath();
@@ -174,6 +183,8 @@ export class ManagerService {
     // finish; it is simply no longer watched.
     this.orchestrator?.pause("the plugin was stopped");
     this.orchestrator = undefined;
+    this.dayNight?.stop();
+    this.dayNight = undefined;
     await this.poller?.stop();
     this.poller = undefined;
     this.keys = undefined;

@@ -24,6 +24,9 @@ board from the browser.
   compatibility.
 - **Flashes a new board over USB** from the browser, for a board that has never
   been on your network.
+- **Tells panels when it is night.** Publishes `environment.mode` (`day` or
+  `night`) from the boat's position, so a touch panel dims only at night. See
+  [Day and night](#day-and-night).
 
 ## Requirements
 
@@ -142,6 +145,22 @@ than offering an update that would be refused after the download.
   old key, which the plugin remembers for it, and gets the new one once it
   answers again. Removing it never
   opens a device: each one that used it keeps it as its own key.
+
+## Day and night
+
+espOS touch panels dim their backlight only at night, and learn that from
+`environment.mode`. The plugin works it out every minute from
+`navigation.position` with [Almanac](https://github.com/openwatersio/almanac)
+([`@openwaters/almanac`](https://www.npmjs.com/package/@openwaters/almanac)),
+which computes the Sun's position offline. It is `day` while any part of the
+Sun is above the horizon, from sunrise to sunset, and `night` otherwise, which
+also covers the midnight sun and the polar night. Until the server has a
+position nothing is published, and the panels stay bright.
+
+signalk-derived-data is not needed for this. If it is installed with its Sun
+calculation on, it publishes `environment.mode` too, switching to night a few
+minutes earlier at sunset; turn off **Publish day and night** under Plugin
+Config to leave it to derived-data.
 
 ## Privacy and network use
 
