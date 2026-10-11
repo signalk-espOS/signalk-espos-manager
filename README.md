@@ -4,10 +4,9 @@ Finds the [espOS](https://github.com/signalk-espOS/espOS) devices on your boat,
 keeps their firmware up to date from a project registry, and flashes a new
 board from the browser.
 
-> **Status: works, not yet proven on hardware.** Everything below is built and
-> tested against real devices and a real Signal K server, but no firmware has
-> been written to a board by this plugin yet. Treat the first update and the
-> first flash as things to watch.
+> **Status: proven on hardware.** A new board has been flashed from the
+> browser and an installed device has been updated over the air with this
+> plugin.
 
 ## What it does
 
@@ -41,6 +40,60 @@ npm install signalk-espos-manager
 
 Then restart the server. The plugin enables itself on first start with the
 default settings; you can still turn it off under Plugin Config.
+
+## Using it
+
+The plugin adds an **espOS Manager** webapp to the Signal K server, with three
+pages: **Devices**, **Firmware** and **New board**.
+
+### Installing firmware on a new board
+
+For a board that has never been on your network.
+
+1. Plug the board into the computer running the browser by USB and open
+   **New board**.
+2. Pick the firmware. The page connects to the board, reads its chip and
+   flash size, and checks the image fits before anything is written. If the
+   chip has several boards, it asks which one this is.
+3. Write it and wait for the progress bar to finish.
+4. **Unplug the board and plug it back in.** It is reset after writing, but a
+   full power cycle is what reliably starts the new firmware.
+5. Join the open WiFi network named `espOS-` followed by four characters and
+   enter your boat's network at <http://192.168.4.1/>.
+6. Once it joins, it appears on the **Devices** page.
+
+Browsers only allow USB access from a secure page. When your server is on
+plain http, the page sends you to the
+[hosted flasher](https://signalk-espos.github.io/signalk-espos-manager/flash/),
+which does the same thing. The page also offers each image as a download for
+writing with `esptool`.
+
+### Updating a device
+
+1. Open the device from **Devices**. Its **Firmware updates** card shows the
+   newest release for its project and board, with the release notes, and when
+   the firmware list was last checked. **Check now** reads it again; it is
+   also checked every hour.
+2. Choose **Install update**. The card follows the update as it downloads,
+   installs, restarts and is confirmed.
+3. Once the device comes back and reports the new version, the plugin waits
+   until it has looked healthy for a while (two minutes by default) and then
+   confirms the new image. If nothing confirms it, the device rolls back to
+   the previous firmware on its own.
+
+A device running a build that is not a released version shows **Install
+anyway**, since the release may be older than what it runs. A device that is
+not pointed at this server for updates shows **Not set up for updates** with
+a **Fix this** button. Updates run one device at a time unless you raise
+**Simultaneous updates** in Plugin Config; the same place sets the update
+channel, beta releases and the confirm timing. **Advanced** on the device page
+can confirm or roll back the current image by hand.
+
+A P4 board's radio co-processor (the chip that handles WiFi and Bluetooth)
+runs firmware of its own. When it is older than the device's firmware expects,
+the device page says so. Updating it from the manager needs device firmware
+that supports it; until then the card says what to install first. While a
+radio update runs, a firmware update waits for it to finish.
 
 ## How updates reach a device
 
@@ -95,14 +148,6 @@ The firmware list comes from the
 flashed from the [hosted flasher](https://signalk-espos.github.io/signalk-espos-manager/flash/)
 when your server is on plain http (browsers only allow USB access from a
 secure page).
-
-### Not proven yet
-
-**No firmware has been written to a board by this plugin, and no device has
-been updated by it.** The code paths are tested against the device's own
-manifest parser and the flashing library's own contracts, and the hosted
-flasher has been driven in a browser — but the first real update and the first
-real flash are still worth watching rather than trusting.
 
 ## Licence
 
