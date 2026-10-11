@@ -16,6 +16,7 @@ import {
   boardCatalogue,
   targetsInCatalogue,
   type CatalogueProject,
+  type HardwareBoard,
   esposLag,
   isPrerelease,
 } from "../web/src/flash/catalogue.js";
@@ -989,5 +990,139 @@ describe("defaultBuilds", () => {
       ],
     };
     expect(defaultBuilds([mixed]).map((b) => b.version)).toEqual(["1.0.0"]);
+  });
+});
+
+/**
+ * The registry's hardware catalogue: one BLE gateway image that runs on three
+ * Waveshare P4 boards, as signalk-espOS/registry#18 lists it.
+ */
+describe("hardware catalogue", () => {
+  const hardware: HardwareBoard[] = [
+    {
+      id: "waveshare-p4-poe-eth",
+      vendor: "Waveshare",
+      name: "Waveshare ESP32-P4 PoE Ethernet board",
+      target: "esp32p4",
+      notes: "Never power it from USB and PoE together.",
+    },
+    {
+      id: "waveshare-p4-touch-7b",
+      vendor: "Waveshare",
+      model: "ESP32-P4-WIFI6-Touch-LCD-7B",
+      name: "Waveshare ESP32-P4 7-inch touch display (7B)",
+      target: "esp32p4",
+      notes: "Not the same board as the X-7.",
+    },
+  ];
+  const ble: CatalogueProject = {
+    id: "ble-gateway",
+    name: "BLE Gateway",
+    repo: "dirkwa/espos-ble-gateway",
+    boards: [
+      {
+        id: "waveshare-p4-poe",
+        target: "esp32p4",
+        name: "Waveshare ESP32-P4: POE-ETH or Touch-LCD-7B",
+        notes: "One image for both boards.",
+        support: "tested",
+        runsOn: ["waveshare-p4-poe-eth", "waveshare-p4-touch-7b"],
+      },
+    ],
+    releases: [
+      {
+        version: "1.0.3",
+        channel: "stable",
+        builds: [
+          {
+            target: "esp32p4",
+            boardId: "waveshare-p4-poe",
+            mergedUrl: "https://github.invalid/ble-p4.bin",
+          },
+        ],
+      },
+    ],
+  };
+  const panel: CatalogueProject = {
+    id: "cockpit",
+    name: "P4 Cockpit",
+    repo: "dirkwa/espos-p4-cockpit",
+    boards: [
+      {
+        id: "waveshare-p4-touch-7b",
+        target: "esp32p4",
+        name: "Waveshare ESP32-P4 7-inch touch display (7B)",
+        // As the index writes it: the board's notes, then the project's.
+        notes: "Not the same board as the X-7. Portrait panel.",
+      },
+    ],
+    releases: [
+      {
+        version: "1.5.2",
+        channel: "stable",
+        builds: [
+          {
+            target: "esp32p4",
+            boardId: "waveshare-p4-touch-7b",
+            mergedUrl: "https://github.invalid/7b.bin",
+          },
+        ],
+      },
+    ],
+  };
+
+  it("offers a shared image on every board it runs on", () => {
+    const entries = boardCatalogue([ble], hardware);
+    expect(entries.map((e) => e.id).sort()).toEqual([
+      "waveshare-p4-poe-eth",
+      "waveshare-p4-touch-7b",
+    ]);
+    for (const entry of entries) {
+      expect(entry.offers[0]?.build?.boardId).toBe("waveshare-p4-poe");
+      expect(entry.offers[0]?.support).toBe("tested");
+      expect(entry.offers[0]?.boardNotes).toBe("One image for both boards.");
+    }
+  });
+
+  it("names a board from the catalogue, with its vendor", () => {
+    const entry = boardCatalogue([ble], hardware).find(
+      (e) => e.id === "waveshare-p4-touch-7b",
+    );
+    expect(entry?.name).toBe("Waveshare ESP32-P4 7-inch touch display (7B)");
+    expect(entry?.vendor).toBe("Waveshare");
+    expect(entry?.notes).toBe("Not the same board as the X-7.");
+  });
+
+  it("puts two projects on one catalogue board", () => {
+    const entry = boardCatalogue([ble, panel], hardware).find(
+      (e) => e.id === "waveshare-p4-touch-7b",
+    );
+    expect(entry?.offers.map((o) => o.projectId).sort()).toEqual([
+      "ble-gateway",
+      "cockpit",
+    ]);
+    // The board's own notes show once, on the board, not again per project.
+    expect(
+      entry?.offers.find((o) => o.projectId === "cockpit")?.boardNotes,
+    ).toBe("Portrait panel.");
+  });
+
+  it("lists a shared image once among the builds", () => {
+    expect(allBuilds([ble])).toHaveLength(1);
+    expect(defaultBuilds([ble])).toHaveLength(1);
+  });
+
+  it("keeps the project's notes on a shared image without a catalogue", () => {
+    for (const entry of boardCatalogue([ble])) {
+      expect(entry.offers[0]?.boardNotes).toBe("One image for both boards.");
+    }
+  });
+
+  it("names a runsOn board by its id when the catalogue is missing", () => {
+    const ids = boardCatalogue([ble]).map((e) => e.name);
+    expect(ids.sort()).toEqual([
+      "waveshare-p4-poe-eth",
+      "waveshare-p4-touch-7b",
+    ]);
   });
 });

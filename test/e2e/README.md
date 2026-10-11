@@ -41,3 +41,18 @@ node test/e2e/webapp.mjs
 ```
 
 Screenshots land in `$TMPDIR`. Set `BASE` to point at another server.
+
+## The hosted flasher
+
+`flasher.mjs` walks the flasher's start screen, one job and one board card. It
+needs no server or device: build, serve the page, and run it. It prints the
+`updated` time of the registry index the page loaded, which belongs with the
+screenshots in the pull request.
+
+```sh
+npm ci && npm run build
+npx vite preview &
+node test/e2e/flasher.mjs
+```
+
+Set `CHROMIUM` to a browser binary when Playwright's own is not installed.

@@ -22,7 +22,11 @@ import {
   targetsInCatalogue,
   type BoardEntry,
   type BoardOffer,
+  type CatalogueBoard,
+  type HardwareBoard,
+  type UseCase,
 } from "../src/flash/catalogue.js";
+import { NothingSent, UseCaseList, UseCaseView } from "./start.js";
 import {
   activeConnection,
   connect,
@@ -54,13 +58,7 @@ interface RegistryProject {
   repo: string;
   official?: boolean;
   deprecated?: boolean | string;
-  boards?: {
-    id: string;
-    name: string;
-    target: string;
-    notes?: string;
-    buyUrl?: string;
-  }[];
+  boards?: CatalogueBoard[];
   releases?: {
     version: string;
     channel: string;
@@ -79,6 +77,17 @@ interface RegistryProject {
  * you want and are after a specific release.
  */
 type Browse = "board" | "build";
+
+/**
+ * Where the chooser is. `start` asks what the board should do; `usecase` shows
+ * the boards for one job; `list` is the full board or firmware list; `board`
+ * is one board's card, reached from a job.
+ */
+type View =
+  | { kind: "start" }
+  | { kind: "usecase"; id: string }
+  | { kind: "list" }
+  | { kind: "board"; id: string; useCase: string };
 
 /** The project publishes no URL a browser is allowed to read. */
 class NoWebUrlError extends Error {
@@ -236,6 +245,161 @@ function OfferLinks({ offer }: { offer: BoardOffer }) {
   );
 }
 
+/**
+ * One board and everything it can run.
+ *
+ * `prefer` puts the projects a use case named first, so someone who came for
+ * Bluetooth sensors sees the gateway before the instrument panel the same
+ * board also runs.
+ */
+function BoardEntryView({
+  entry,
+  matches,
+  busy,
+  esposLatest,
+  onPick,
+  prefer = [],
+}: {
+  entry: BoardEntry;
+  matches: boolean;
+  busy: boolean;
+  esposLatest: string | undefined;
+  onPick: (b: FlashBuild) => void;
+  prefer?: string[];
+}) {
+  const offers = [...entry.offers].sort(
+    (a, b) =>
+      Number(!prefer.includes(a.projectId)) -
+      Number(!prefer.includes(b.projectId)),
+  );
+  return (
+    <li class={matches ? "board-entry matches" : "board-entry"}>
+      {entry.image !== undefined && (
+        <img
+          class="board-photo"
+          src={entry.image}
+          alt={entry.name}
+          title={entry.imageCredit}
+          loading="lazy"
+        />
+      )}
+      <div class="board-head">
+        <span class="board-name">{entry.name}</span>
+        {matches && (
+          <span
+            class="pill ok"
+            title="This board uses the chip you connected. Several different boards can share one chip, so check the name against the hardware in front of you."
+          >
+            matches your chip
+          </span>
+        )}
+        <span class="muted small">{entry.target}</span>
+        {entry.buyUrl !== undefined && (
+          <a class="small" href={entry.buyUrl} target="_blank" rel="noreferrer">
+            where to buy
+          </a>
+        )}
+      </div>
+      {entry.vendor !== undefined && (
+        <p class="muted small">
+          {entry.vendor}
+          {entry.model !== undefined && ` · ${entry.model}`}
+        </p>
+      )}
+      {entry.notes !== undefined && <p class="muted small">{entry.notes}</p>}
+      <ul class="offers">
+        {offers.map((offer, i) => (
+          /* One project can reach a board twice, through its own entry and
+           * another's runsOn, so the project alone is not a unique key. */
+          <li key={`${offer.projectId}-${i}`}>
+            {offer.state === "flashable" && offer.build !== undefined ? (
+              <>
+                <button
+                  disabled={busy}
+                  onClick={() => onPick(offer.build as FlashBuild)}
+                >
+                  <span class="flash-title">
+                    {offer.projectName} {offer.build.version}
+                    {offer.official === true && (
+                      <span class="pill ok">official</span>
+                    )}
+                    {offer.support === "tested" && (
+                      <span
+                        class="pill ok"
+                        title="The project has run this firmware on this board."
+                      >
+                        tested
+                      </span>
+                    )}
+                    {isPrerelease(offer.build) && (
+                      <span
+                        class="pill warn"
+                        title="This project has published no stable release for this board yet, so the newest prerelease is what is offered."
+                      >
+                        {offer.build.channel ?? "prerelease"}
+                      </span>
+                    )}
+                    {offer.build.unsigned === true && (
+                      <span
+                        class="pill warn"
+                        title="Built with a throwaway key: this board will not accept later updates over the air."
+                      >
+                        unsigned
+                      </span>
+                    )}
+                  </span>
+                  {offer.summary !== undefined && (
+                    <span class="flash-summary">{offer.summary}</span>
+                  )}
+                  {/* An image built for another board entry, which runs on
+                      this one too: say which, since a project can offer both. */}
+                  {offer.build.boardId !== undefined &&
+                    offer.build.boardId !== entry.id &&
+                    offer.build.boardName !== undefined && (
+                      <span class="flash-summary">
+                        Image for {offer.build.boardName}
+                      </span>
+                    )}
+                  <span class="flash-meta">{mb(offer.build.mergedBytes)}</span>
+                </button>
+                <EsposLine build={offer.build} latest={esposLatest} />
+                {offer.boardNotes !== undefined && (
+                  <span class="muted small offer-note">{offer.boardNotes}</span>
+                )}
+                {offer.note !== undefined && (
+                  <span class="muted small offer-note">{offer.note}</span>
+                )}
+                <OtherVersions offer={offer} busy={busy} onPick={onPick} />
+                <OfferLinks offer={offer} />
+              </>
+            ) : (
+              <div class="offer-blocked">
+                <span class="flash-title">
+                  {offer.projectName}
+                  <span class="pill">
+                    {offer.state === "none"
+                      ? "no firmware yet"
+                      : offer.state === "ota-only"
+                        ? "update only"
+                        : "build not identified"}
+                  </span>
+                </span>
+                {offer.reason !== undefined && (
+                  <span class="muted small">{offer.reason}</span>
+                )}
+                {offer.boardNotes !== undefined && (
+                  <span class="muted small">{offer.boardNotes}</span>
+                )}
+                <OfferLinks offer={offer} />
+              </div>
+            )}
+          </li>
+        ))}
+      </ul>
+    </li>
+  );
+}
+
 function App() {
   const support = serialSupport();
   const [projects, setProjects] = useState<RegistryProject[] | undefined>(
@@ -247,6 +411,11 @@ function App() {
   /* The newest espOS runtime, so a build made against an older one can say so.
    * From the index, because a blank board cannot be asked. */
   const [esposLatest, setEsposLatest] = useState<string | undefined>(undefined);
+  /* The registry's hardware catalogue and use cases. Empty in an index from
+   * before they existed, which drops the page back to the plain board list. */
+  const [hardware, setHardware] = useState<HardwareBoard[]>([]);
+  const [useCases, setUseCases] = useState<UseCase[]>([]);
+  const [view, setView] = useState<View>({ kind: "start" });
   const [build, setBuild] = useState<FlashBuild | undefined>(undefined);
   const [report, setReport] = useState<PreflightReport | undefined>(undefined);
   const [head, setHead] = useState<Uint8Array | undefined>(undefined);
@@ -293,9 +462,13 @@ function App() {
         const body = (await response.json()) as {
           projects: RegistryProject[];
           esposLatest?: string;
+          boards?: HardwareBoard[];
+          useCases?: UseCase[];
         };
         setProjects(body.projects);
         setEsposLatest(body.esposLatest);
+        setHardware(body.boards ?? []);
+        setUseCases(body.useCases ?? []);
       } catch (e) {
         setRegistryError(e instanceof Error ? e.message : String(e));
       }
@@ -356,6 +529,7 @@ function App() {
       });
       // Narrow the list to what this board can actually run.
       if (connection.target !== undefined) setChipFilter(connection.target);
+      setView({ kind: "list" });
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -462,10 +636,21 @@ function App() {
   };
 
   const catalogue: BoardEntry[] = useMemo(
-    () => boardCatalogue(projects ?? []),
-    [projects],
+    () => boardCatalogue(projects ?? [], hardware),
+    [projects, hardware],
   );
   const chips = useMemo(() => targetsInCatalogue(catalogue), [catalogue]);
+  /* The guided start needs the registry's use cases; an older index has none
+   * and gets the plain board list straight away. */
+  const guided = useCases.length > 0;
+  /* Only where the list it filters is on screen, or a write is under way. */
+  const showIdentify = !guided || view.kind === "list" || build !== undefined;
+  const openUseCase =
+    view.kind === "usecase"
+      ? useCases.find((u) => u.id === view.id)
+      : undefined;
+  const openBoard =
+    view.kind === "board" ? catalogue.find((e) => e.id === view.id) : undefined;
   const shown =
     chipFilter === "all"
       ? catalogue
@@ -554,61 +739,67 @@ function App() {
         </div>
       ) : (
         <>
-          <div class="card">
-            {chipName === undefined ? (
-              <>
-                <p>
-                  <button disabled={busy} onClick={() => void onIdentify()}>
-                    Connect the board and identify it
-                  </button>
-                </p>
-                <p class="muted small">
-                  Optional, and much easier than finding your board in the list:
-                  several boards differ only by a couple of characters in their
-                  name. Identifying first shows only what this board can run.
-                </p>
-              </>
-            ) : (
-              <>
-                <p class="muted small">
-                  Showing boards that use the{" "}
-                  <strong>{profile?.description ?? chipName}</strong> you
-                  connected. Several boards can share one chip, so check the
-                  name against the hardware in front of you before writing.
-                </p>
-                <p class="small">
-                  <button
-                    class="linkish"
-                    onClick={() => {
-                      setChipFilter("all");
-                    }}
-                  >
-                    Show every board
-                  </button>
-                  {" · "}
-                  <button
-                    class="linkish"
-                    onClick={() => {
-                      void (async () => {
-                        await disconnect();
-                        setChipName(undefined);
-                        setProfile(undefined);
+          {/* Identifying the chip answers "which board is this?", the second
+              door. Someone still choosing what to buy has nothing to plug in. */}
+          {showIdentify && (
+            <div class="card">
+              {chipName === undefined ? (
+                <>
+                  <p>
+                    <button disabled={busy} onClick={() => void onIdentify()}>
+                      Connect the board and identify it
+                    </button>
+                  </p>
+                  <p class="muted small">
+                    Optional, and much easier than finding your board in the
+                    list: several boards differ only by a couple of characters
+                    in their name. Identifying first shows only what this board
+                    can run.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p class="muted small">
+                    Showing boards that use the{" "}
+                    <strong>{profile?.description ?? chipName}</strong> you
+                    connected. Several boards can share one chip, so check the
+                    name against the hardware in front of you before writing.
+                  </p>
+                  <p class="small">
+                    <button
+                      class="linkish"
+                      onClick={() => {
                         setChipFilter("all");
-                        setReport(undefined);
-                        setBuild(undefined);
-                      })();
-                    }}
-                  >
-                    Identify another board
-                  </button>
-                </p>
-              </>
-            )}
-            <p class="muted small">
-              Nothing is sent anywhere: the firmware downloads from GitHub
-              straight to your browser, and your browser writes it to the board.
-            </p>
-          </div>
+                      }}
+                    >
+                      Show every board
+                    </button>
+                    {" · "}
+                    <button
+                      class="linkish"
+                      onClick={() => {
+                        void (async () => {
+                          await disconnect();
+                          setChipName(undefined);
+                          setProfile(undefined);
+                          setChipFilter("all");
+                          setReport(undefined);
+                          setBuild(undefined);
+                        })();
+                      }}
+                    >
+                      Identify another board
+                    </button>
+                  </p>
+                </>
+              )}
+              <p class="muted small">
+                Nothing is sent anywhere: the firmware downloads from GitHub
+                straight to your browser, and your browser writes it to the
+                board.
+              </p>
+            </div>
+          )}
 
           {error !== undefined && (
             <div
@@ -621,8 +812,63 @@ function App() {
             </div>
           )}
 
-          {build === undefined ? (
+          {build === undefined && guided && view.kind === "start" ? (
+            <UseCaseList
+              useCases={useCases}
+              onUseCase={(id) => setView({ kind: "usecase", id })}
+              onHaveBoard={() => setView({ kind: "list" })}
+            />
+          ) : build === undefined && openUseCase !== undefined ? (
+            <UseCaseView
+              useCase={openUseCase}
+              catalogue={catalogue}
+              onBack={() => setView({ kind: "start" })}
+              onBoard={(id) =>
+                setView({ kind: "board", id, useCase: openUseCase.id })
+              }
+            />
+          ) : build === undefined && view.kind === "board" ? (
             <div class="card">
+              <p class="small">
+                <button
+                  class="linkish"
+                  onClick={() => setView({ kind: "usecase", id: view.useCase })}
+                >
+                  ← Back
+                </button>
+              </p>
+              {openBoard === undefined ? (
+                <p class="muted">
+                  No firmware in the registry lists this board yet.
+                </p>
+              ) : (
+                <ul class="projects">
+                  <BoardEntryView
+                    entry={openBoard}
+                    matches={activeConnection()?.target === openBoard.target}
+                    busy={busy}
+                    esposLatest={esposLatest}
+                    onPick={(b) => void onPick(b)}
+                    prefer={
+                      useCases.find((u) => u.id === view.useCase)?.projects ??
+                      []
+                    }
+                  />
+                </ul>
+              )}
+            </div>
+          ) : build === undefined ? (
+            <div class="card">
+              {guided && (
+                <p class="small">
+                  <button
+                    class="linkish"
+                    onClick={() => setView({ kind: "start" })}
+                  >
+                    ← What should your board do?
+                  </button>
+                </p>
+              )}
               <div class="browse-head">
                 <h3>
                   {browse === "board"
@@ -675,124 +921,14 @@ function App() {
                     )}
                     <ul class="projects">
                       {shown.map((entry) => (
-                        <li
-                          class={
-                            activeConnection()?.target === entry.target
-                              ? "board-entry matches"
-                              : "board-entry"
-                          }
+                        <BoardEntryView
                           key={entry.id}
-                        >
-                          <div class="board-head">
-                            <span class="board-name">{entry.name}</span>
-                            {activeConnection()?.target === entry.target && (
-                              <span
-                                class="pill ok"
-                                title="This board uses the chip you connected. Several different boards can share one chip, so check the name against the hardware in front of you."
-                              >
-                                matches your chip
-                              </span>
-                            )}
-                            <span class="muted small">{entry.target}</span>
-                            {entry.buyUrl !== undefined && (
-                              <a
-                                class="small"
-                                href={entry.buyUrl}
-                                target="_blank"
-                                rel="noreferrer"
-                              >
-                                where to buy
-                              </a>
-                            )}
-                          </div>
-                          {entry.notes !== undefined && (
-                            <p class="muted small">{entry.notes}</p>
-                          )}
-                          <ul class="offers">
-                            {entry.offers.map((offer) => (
-                              <li key={offer.projectId}>
-                                {offer.state === "flashable" &&
-                                offer.build !== undefined ? (
-                                  <>
-                                    <button
-                                      disabled={busy}
-                                      onClick={() =>
-                                        void onPick(offer.build as FlashBuild)
-                                      }
-                                    >
-                                      <span class="flash-title">
-                                        {offer.projectName}{" "}
-                                        {offer.build.version}
-                                        {offer.official === true && (
-                                          <span class="pill ok">official</span>
-                                        )}
-                                        {isPrerelease(offer.build) && (
-                                          <span
-                                            class="pill warn"
-                                            title="This project has published no stable release for this board yet, so the newest prerelease is what is offered."
-                                          >
-                                            {offer.build.channel ??
-                                              "prerelease"}
-                                          </span>
-                                        )}
-                                        {offer.build.unsigned === true && (
-                                          <span
-                                            class="pill warn"
-                                            title="Built with a throwaway key: this board will not accept later updates over the air."
-                                          >
-                                            unsigned
-                                          </span>
-                                        )}
-                                      </span>
-                                      {offer.summary !== undefined && (
-                                        <span class="flash-summary">
-                                          {offer.summary}
-                                        </span>
-                                      )}
-                                      <span class="flash-meta">
-                                        {mb(offer.build.mergedBytes)}
-                                      </span>
-                                    </button>
-                                    <EsposLine
-                                      build={offer.build}
-                                      latest={esposLatest}
-                                    />
-                                    {offer.note !== undefined && (
-                                      <span class="muted small offer-note">
-                                        {offer.note}
-                                      </span>
-                                    )}
-                                    <OtherVersions
-                                      offer={offer}
-                                      busy={busy}
-                                      onPick={(b) => void onPick(b)}
-                                    />
-                                    <OfferLinks offer={offer} />
-                                  </>
-                                ) : (
-                                  <div class="offer-blocked">
-                                    <span class="flash-title">
-                                      {offer.projectName}
-                                      <span class="pill">
-                                        {offer.state === "none"
-                                          ? "no firmware yet"
-                                          : offer.state === "ota-only"
-                                            ? "update only"
-                                            : "build not identified"}
-                                      </span>
-                                    </span>
-                                    {offer.reason !== undefined && (
-                                      <span class="muted small">
-                                        {offer.reason}
-                                      </span>
-                                    )}
-                                    <OfferLinks offer={offer} />
-                                  </div>
-                                )}
-                              </li>
-                            ))}
-                          </ul>
-                        </li>
+                          entry={entry}
+                          matches={activeConnection()?.target === entry.target}
+                          busy={busy}
+                          esposLatest={esposLatest}
+                          onPick={(b) => void onPick(b)}
+                        />
                       ))}
                     </ul>
                   </>

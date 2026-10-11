@@ -78,12 +78,62 @@ export interface CatalogueRelease {
   builds: CatalogueBuild[];
 }
 
+/** How far a project has tested its firmware on a board. */
+export type Support = "tested" | "community" | "builds";
+
 export interface CatalogueBoard {
   id: string;
   target: string;
   name: string;
   notes?: string;
   buyUrl?: string;
+  /**
+   * The hardware-catalogue boards this entry's image runs on, when that is
+   * not just the entry itself: one BLE gateway image serves three Waveshare
+   * P4 boards. The builds still name this entry's id.
+   */
+  runsOn?: string[];
+  support?: Support;
+}
+
+/**
+ * A board from the registry's hardware catalogue (the index's `boards`): what
+ * an owner can recognise and buy, independent of any firmware.
+ */
+export interface HardwareBoard {
+  id: string;
+  vendor: string;
+  name: string;
+  model?: string;
+  target: string;
+  features?: string[];
+  image?: string;
+  imageCredit?: string;
+  buyUrl?: string;
+  notes?: string;
+}
+
+/** One board a use case recommends, already ranked by the registry. */
+export interface UseCaseBoard {
+  id: string;
+  name: string;
+  /** False when the board lacks a feature the job needs (CAN, say). */
+  fits?: boolean;
+  support?: Support;
+  reason?: string;
+  downloads?: number;
+}
+
+/** A job an owner wants done, in their words (the index's `useCases`). */
+export interface UseCase {
+  id: string;
+  title: string;
+  summary: string;
+  description?: string;
+  needs?: string[];
+  /** Empty while no firmware does it yet. */
+  projects: string[];
+  boards: UseCaseBoard[];
 }
 
 export interface CatalogueProject {
@@ -151,6 +201,14 @@ export interface BoardOffer {
   repo: string;
   official?: boolean;
   deprecated?: boolean | string;
+  /** How far the project has tested this firmware on this board. */
+  support?: Support;
+  /**
+   * What the project says about running on this board, where the board card
+   * does not already say it: one image shared by several boards explains
+   * itself here rather than on each board.
+   */
+  boardNotes?: string;
   state: OfferState;
   /** Why, in a sentence, for every state except `flashable`. */
   reason?: string;
@@ -187,6 +245,11 @@ export interface BoardEntry {
   id: string;
   target: Target;
   name: string;
+  /** From the hardware catalogue, when the registry has an entry for it. */
+  vendor?: string;
+  model?: string;
+  image?: string;
+  imageCredit?: string;
   notes?: string;
   buyUrl?: string;
   offers: BoardOffer[];
@@ -423,8 +486,20 @@ function offerFor(
   };
 }
 
-export function boardCatalogue(projects: CatalogueProject[]): BoardEntry[] {
+/**
+ * Every board, with what each can run.
+ *
+ * `hardware` is the registry's board catalogue. Without it (an index from
+ * before the catalogue existed) boards are named by the projects that list
+ * them, as before. With it, a board is the one an owner can recognise, and an
+ * image that `runsOn` several of them is offered on each.
+ */
+export function boardCatalogue(
+  projects: CatalogueProject[],
+  hardware: HardwareBoard[] = [],
+): BoardEntry[] {
   const byId = new Map<string, BoardEntry>();
+  const known = new Map(hardware.map((h) => [h.id, h]));
 
   for (const project of projects) {
     const boards = project.boards ?? [];
@@ -434,20 +509,39 @@ export function boardCatalogue(projects: CatalogueProject[]): BoardEntry[] {
       ).length;
       const offer = offerFor(project, board, boardsOnTarget);
 
-      const existing = byId.get(board.id);
-      if (existing === undefined) {
-        byId.set(board.id, {
-          id: board.id,
-          target: board.target as Target,
-          name: board.name,
-          notes: board.notes,
-          buyUrl: board.buyUrl,
-          offers: [offer],
-          anyFlashable: offer.state === "flashable",
-        });
-      } else {
-        existing.offers.push(offer);
-        existing.anyFlashable ||= offer.state === "flashable";
+      /* The index puts a catalogue board's own notes ahead of the project's;
+       * the board card shows the former, so the offer keeps only the latter. */
+      const projectOnly = withoutPrefix(
+        board.notes,
+        known.get(board.id)?.notes,
+      );
+      for (const id of board.runsOn ?? [board.id]) {
+        const hw = known.get(id);
+        const describesItself = hw === undefined && id === board.id;
+        const placed: BoardOffer = {
+          ...offer,
+          support: board.support,
+          boardNotes: describesItself ? undefined : projectOnly,
+        };
+        const existing = byId.get(id);
+        if (existing === undefined) {
+          byId.set(id, {
+            id,
+            target: (hw?.target ?? board.target) as Target,
+            name: hw?.name ?? (id === board.id ? board.name : id),
+            vendor: hw?.vendor,
+            model: hw?.model,
+            image: hw?.image,
+            imageCredit: hw?.imageCredit,
+            notes: describesItself ? board.notes : hw?.notes,
+            buyUrl: hw?.buyUrl ?? (id === board.id ? board.buyUrl : undefined),
+            offers: [placed],
+            anyFlashable: offer.state === "flashable",
+          });
+        } else {
+          existing.offers.push(placed);
+          existing.anyFlashable ||= offer.state === "flashable";
+        }
       }
     }
   }
@@ -466,6 +560,20 @@ export function boardCatalogue(projects: CatalogueProject[]): BoardEntry[] {
       if (a.anyFlashable !== b.anyFlashable) return a.anyFlashable ? -1 : 1;
       return a.name.localeCompare(b.name);
     });
+}
+
+/** `notes` without a leading `prefix`, or all of it when it does not start so. */
+function withoutPrefix(
+  notes: string | undefined,
+  prefix: string | undefined,
+): string | undefined {
+  if (notes === undefined || prefix === undefined) return notes;
+  if (!notes.startsWith(prefix)) return notes;
+  return notes.slice(prefix.length).trim() || undefined;
+}
+
+function buildKey(b: FlashBuild): string {
+  return [b.projectId, b.version, b.target, b.boardId ?? ""].join("\u0000");
 }
 
 function rank(state: OfferState): number {
@@ -515,8 +623,18 @@ export function targetsInCatalogue(entries: BoardEntry[]): Target[] {
  */
 export function allBuilds(projects: CatalogueProject[]): FlashBuild[] {
   const out: FlashBuild[] = [];
+  /* An image that runs on several boards is offered under each of them, but it
+   * is one build. */
+  const seen = new Set<string>();
   for (const entry of boardCatalogue(projects)) {
-    for (const offer of entry.offers) out.push(...offer.builds);
+    for (const offer of entry.offers) {
+      for (const b of offer.builds) {
+        const key = buildKey(b);
+        if (seen.has(key)) continue;
+        seen.add(key);
+        out.push(b);
+      }
+    }
   }
   /* Projects the board-first view could not place. A synthetic board name is
    * deliberately NOT invented: the row says the chip, and the chooser's own
@@ -551,9 +669,14 @@ export function allBuilds(projects: CatalogueProject[]): FlashBuild[] {
  */
 export function defaultBuilds(projects: CatalogueProject[]): FlashBuild[] {
   const out: FlashBuild[] = [];
+  const seen = new Set<string>();
   for (const entry of boardCatalogue(projects)) {
     for (const offer of entry.offers) {
-      if (offer.build !== undefined) out.push(offer.build);
+      if (offer.build === undefined) continue;
+      const key = buildKey(offer.build);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(offer.build);
     }
   }
   const boardless = projects.filter((p) => (p.boards ?? []).length === 0);
