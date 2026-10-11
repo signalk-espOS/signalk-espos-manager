@@ -77,13 +77,16 @@ async function fetchRegistry(url: string): Promise<RegistryBody> {
 
 /**
  * The plugin's index when the plugin serves this page, else the public one.
- * A plugin that refuses (no login, an older version without the route) falls
- * back too: the public list is still better than none.
+ * A plugin that refuses (no login, an older version without the route) or has
+ * no projects falls back too: the public list is still better than none.
  */
 async function loadRegistry(): Promise<RegistryBody> {
   if (window.location.origin !== HOSTED_ORIGIN) {
     try {
-      return await fetchRegistry(PLUGIN_REGISTRY_URL);
+      // A plugin with no copy yet (first start, offline) answers with an
+      // empty list; the public one may still be reachable from this laptop.
+      const body = await fetchRegistry(PLUGIN_REGISTRY_URL);
+      if (body.projects.length > 0) return body;
     } catch {
       // Fall through to the public registry.
     }
