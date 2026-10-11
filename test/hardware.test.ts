@@ -123,6 +123,48 @@ describe("parseIndex catalogue", () => {
     expect(x7?.image).toBeUndefined();
   });
 
+  it("keeps the fields only the flasher reads", () => {
+    const parsed = parseIndex({
+      schema: 1,
+      esposLatest: "1.4.0",
+      projects: [],
+      boards: [
+        {
+          id: "b",
+          name: "B",
+          target: "esp32p4",
+          usbBridge: { chip: "CH343", vid: "1a86" },
+          image: "javascript:alert(1)",
+        },
+      ],
+      useCases: [
+        {
+          id: "u",
+          title: "U",
+          summary: "Does a thing",
+          projects: [],
+          boards: [{ id: "b", fits: "yes", reason: "has CAN" }],
+        },
+      ],
+    });
+    expect(parsed.esposLatest).toBe("1.4.0");
+    expect(parsed.boards?.[0]).toMatchObject({
+      target: "esp32p4",
+      usbBridge: { chip: "CH343", vid: "1a86" },
+      image: undefined,
+    });
+    expect(parsed.useCases?.[0]).toMatchObject({
+      summary: "Does a thing",
+      boards: [{ id: "b", fits: undefined, reason: "has CAN" }],
+    });
+    expect(
+      mergeIndexes([
+        { url: "a", index: parseIndex({ schema: 1, projects: [] }) },
+        { url: "b", index: parsed },
+      ]).index.esposLatest,
+    ).toBe("1.4.0");
+  });
+
   it("reads an index from before the catalogue as having none", () => {
     const old = parseIndex({ schema: 1, projects: [] });
     expect(old.boards).toEqual([]);

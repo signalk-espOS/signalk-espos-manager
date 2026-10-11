@@ -60,11 +60,11 @@ worse than none.
 
 For a board that has never been on your network.
 
-1. Plug the board into the computer running the browser by USB and open
-   **New board**.
-2. Pick the firmware. The page connects to the board, reads its chip and
-   flash size, and checks the image fits before anything is written. If the
-   chip has several boards, it asks which one this is.
+1. Plug the board into the computer running the browser by USB, open
+   **New board** and choose **Open the flasher**.
+2. Pick what the board should do, or the board you have. The flasher
+   connects to the board, reads its chip and flash size, and checks the image
+   fits before anything is written.
 3. Write it and wait for the progress bar to finish.
 4. **Unplug the board and plug it back in.** It is reset after writing, but a
    full power cycle is what reliably starts the new firmware.
@@ -72,13 +72,14 @@ For a board that has never been on your network.
    enter your boat's network at <http://192.168.4.1/>.
 6. Once it joins, it appears on the **Devices** page.
 
-Browsers only allow USB access from a secure page. When your server is on
-plain http, the page sends you to the
-[hosted flasher](https://signalk-espos.github.io/signalk-espos-manager/flash/),
-which does the same thing. The page also offers each image as a download for
-writing with `esptool`.
+**New board** opens the flasher this plugin serves. Browsers only allow USB
+access from a secure page, so when your server is on plain http it sends you
+to the
+[hosted flasher](https://signalk-espos.github.io/signalk-espos-manager/flash/)
+instead, which is the same page. **New board** also offers each image as a
+download for writing with `esptool`.
 
-The hosted flasher starts by asking what the board should do: show
+The flasher starts by asking what the board should do: show
 instruments on a touch screen, bring Bluetooth sensors into Signal K, switch
 loads, or connect an NMEA 2000 network. Each job lists the boards that do it,
 best first, as the registry ranks them, and each board leads to its firmware

@@ -103,6 +103,7 @@ export function parseIndex(raw: unknown): RegistryIndex {
   return {
     schema: 1,
     updated: typeof body.updated === "string" ? body.updated : undefined,
+    esposLatest: optionalString(body.esposLatest),
     projects,
     boards: parseHardware(body.boards),
     useCases: parseUseCases(body.useCases),
@@ -137,6 +138,8 @@ function strings(value: unknown): string[] {
 
 // The catalogue only labels devices; nothing installs from it. So a malformed
 // entry is dropped quietly, and an index without one still serves the store.
+// Fields this side does not read are kept for the flasher, which reads the
+// merged index from here and checks its own.
 function parseHardware(raw: unknown): HardwareBoard[] {
   return records(raw).flatMap((board) => {
     if (typeof board.id !== "string" || typeof board.name !== "string") {
@@ -144,6 +147,7 @@ function parseHardware(raw: unknown): HardwareBoard[] {
     }
     return [
       {
+        ...board,
         id: board.id,
         name: board.name,
         vendor: optionalString(board.vendor),
@@ -163,6 +167,7 @@ function parseUseCases(raw: unknown): UseCase[] {
     }
     return [
       {
+        ...useCase,
         id: useCase.id,
         title: useCase.title,
         projects: strings(useCase.projects),
@@ -170,6 +175,7 @@ function parseUseCases(raw: unknown): UseCase[] {
           typeof board.id === "string"
             ? [
                 {
+                  ...board,
                   id: board.id,
                   fits:
                     typeof board.fits === "boolean" ? board.fits : undefined,
