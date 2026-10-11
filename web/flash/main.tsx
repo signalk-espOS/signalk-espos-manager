@@ -351,6 +351,15 @@ function BoardEntryView({
                   {offer.summary !== undefined && (
                     <span class="flash-summary">{offer.summary}</span>
                   )}
+                  {/* An image built for another board entry, which runs on
+                      this one too: say which, since a project can offer both. */}
+                  {offer.build.boardId !== undefined &&
+                    offer.build.boardId !== entry.id &&
+                    offer.build.boardName !== undefined && (
+                      <span class="flash-summary">
+                        Image for {offer.build.boardName}
+                      </span>
+                    )}
                   <span class="flash-meta">{mb(offer.build.mergedBytes)}</span>
                 </button>
                 <EsposLine build={offer.build} latest={esposLatest} />

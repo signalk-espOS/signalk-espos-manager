@@ -136,7 +136,7 @@ function BoardTile({
       )}
       <span class="flash-title">
         {board.name}
-        {first && board.fits !== false && (
+        {first && board.fits !== false && entry?.anyFlashable === true && (
           <span class="pill ok">best choice</span>
         )}
         {board.support === "tested" && <span class="pill ok">tested</span>}
