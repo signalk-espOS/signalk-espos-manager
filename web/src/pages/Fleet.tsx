@@ -1,6 +1,7 @@
 import { api, isJobFinished, type DeviceDto } from "../api.js";
 import { deviceUrl } from "../deviceUrl.js";
 import { useStore } from "../store.js";
+import { BoardPhoto } from "./BoardPhoto.js";
 import { FleetKeyCard } from "./FleetKey.js";
 
 /** Human-readable reachability, since the raw words are jargon. */
@@ -124,8 +125,15 @@ export function FleetPage() {
                     anyone which panel this is, and two boards on that chip
                     take different firmware -- so the name is the useful fact.
                   */}
-                {device.board !== undefined && (
-                  <span class="device-meta muted">{device.board}</span>
+                {(device.hardware ?? device.board) !== undefined && (
+                  <span class="device-meta muted">
+                    {device.hardware?.name ?? device.board}
+                  </span>
+                )}
+                {device.useCases !== undefined && (
+                  <span class="device-meta">
+                    {device.useCases.map((u) => u.title).join(" · ")}
+                  </span>
                 )}
                 <span class="device-meta muted">
                   {device.addresses[0] ?? "no address"} · {state.text}
@@ -158,6 +166,13 @@ export function FleetPage() {
                   </span>
                 )}
               </button>
+              {device.hardware?.image !== undefined && (
+                <BoardPhoto
+                  key={device.hardware.image}
+                  class="device-thumb"
+                  src={device.hardware.image}
+                />
+              )}
               {/*
                 Sibling of the row button, not inside it: an <a> nested in a
                 <button> is invalid HTML and browsers treat the click

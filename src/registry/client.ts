@@ -15,7 +15,12 @@ import { createHash, randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { mergeIndexes } from "./resolve.js";
-import type { RegistryIndex, RegistryProject } from "./types.js";
+import type {
+  HardwareBoard,
+  RegistryIndex,
+  RegistryProject,
+  UseCase,
+} from "./types.js";
 
 export interface RegistryClientOptions {
   /** Where to cache; usually <dataDir>/cache. */
@@ -99,7 +104,82 @@ export function parseIndex(raw: unknown): RegistryIndex {
     schema: 1,
     updated: typeof body.updated === "string" ? body.updated : undefined,
     projects,
+    boards: parseHardware(body.boards),
+    useCases: parseUseCases(body.useCases),
   };
+}
+
+function records(raw: unknown): Record<string, unknown>[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.filter(
+    (entry): entry is Record<string, unknown> =>
+      typeof entry === "object" && entry !== null,
+  );
+}
+
+function optionalString(value: unknown): string | undefined {
+  return typeof value === "string" ? value : undefined;
+}
+
+// Rendered as a link and an image source, so a third-party index must not be
+// able to slip in a javascript: URL; the registry's schema allows only https.
+function httpsUrl(value: unknown): string | undefined {
+  return typeof value === "string" && value.startsWith("https://")
+    ? value
+    : undefined;
+}
+
+function strings(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((v): v is string => typeof v === "string")
+    : [];
+}
+
+// The catalogue only labels devices; nothing installs from it. So a malformed
+// entry is dropped quietly, and an index without one still serves the store.
+function parseHardware(raw: unknown): HardwareBoard[] {
+  return records(raw).flatMap((board) => {
+    if (typeof board.id !== "string" || typeof board.name !== "string") {
+      return [];
+    }
+    return [
+      {
+        id: board.id,
+        name: board.name,
+        vendor: optionalString(board.vendor),
+        model: optionalString(board.model),
+        image: httpsUrl(board.image),
+        imageCredit: optionalString(board.imageCredit),
+        buyUrl: httpsUrl(board.buyUrl),
+      },
+    ];
+  });
+}
+
+function parseUseCases(raw: unknown): UseCase[] {
+  return records(raw).flatMap((useCase) => {
+    if (typeof useCase.id !== "string" || typeof useCase.title !== "string") {
+      return [];
+    }
+    return [
+      {
+        id: useCase.id,
+        title: useCase.title,
+        projects: strings(useCase.projects),
+        boards: records(useCase.boards).flatMap((board) =>
+          typeof board.id === "string"
+            ? [
+                {
+                  id: board.id,
+                  fits:
+                    typeof board.fits === "boolean" ? board.fits : undefined,
+                },
+              ]
+            : [],
+        ),
+      },
+    ];
+  });
 }
 
 /**

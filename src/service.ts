@@ -33,6 +33,7 @@ import {
   matchDevice,
   projectForApp,
 } from "./registry/resolve.js";
+import { hardwareFor, type DeviceHardware } from "./registry/hardware.js";
 import type { RegistryProject } from "./registry/types.js";
 import {
   filenameFromUrl,
@@ -968,6 +969,19 @@ export class ManagerService {
     const index = this.registryState?.index;
     if (index === undefined) return null;
     return boardIdFromReport(projectForApp(index, app)?.boards, reported);
+  }
+
+  /**
+   * The catalogue board and jobs for a device, from the index already held.
+   * Nothing before the first fetch: a label can wait for the registry.
+   */
+  hardwareFor(
+    app: string | undefined,
+    reported: string | undefined,
+  ): DeviceHardware {
+    const index = this.registryState?.index;
+    if (index === undefined) return { useCases: [] };
+    return hardwareFor(index, app, reported);
   }
 
   /**

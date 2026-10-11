@@ -35,6 +35,11 @@ export interface RegistryBoard {
    * than guessed.
    */
   reportedAs?: string;
+  /**
+   * Catalogue boards (`HardwareBoard.id`) this entry's image runs on, when one
+   * image serves several boards. Absent means the entry's own id.
+   */
+  runsOn?: string[];
 }
 
 /** How to find the firmware files in a release's asset list. */
@@ -103,10 +108,36 @@ export interface RegistryBuild {
   unsigned?: boolean;
 }
 
+/**
+ * A physical product from the registry's board catalogue: what the board is,
+ * as opposed to `RegistryBoard`, which is one firmware's view of it.
+ */
+export interface HardwareBoard {
+  id: string;
+  name: string;
+  vendor?: string;
+  model?: string;
+  image?: string;
+  imageCredit?: string;
+  buyUrl?: string;
+}
+
+/** A job an owner wants done, and the catalogue boards that can do it. */
+export interface UseCase {
+  id: string;
+  title: string;
+  projects: ProjectId[];
+  /** Whether each board has every feature the job needs, as the index ranks them. */
+  boards: { id: string; fits?: boolean }[];
+}
+
 export interface RegistryIndex {
   schema: 1;
   updated?: string;
   projects: RegistryProject[];
+  /** The board catalogue; absent from indexes older than registry #18. */
+  boards?: HardwareBoard[];
+  useCases?: UseCase[];
 }
 
 /** A build resolved for one device, ready to mirror and offer. */

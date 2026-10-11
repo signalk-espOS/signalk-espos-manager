@@ -349,7 +349,35 @@ export function mergeIndexes(
   }
 
   return {
-    index: { schema: 1, projects: [...byId.values()] },
+    index: {
+      schema: 1,
+      projects: [...byId.values()],
+      boards: firstById(sources.map((s) => s.index.boards ?? [])),
+      // A source may only say what ITS projects do; otherwise any index could
+      // label the official firmware with jobs of its choosing.
+      useCases: firstById(
+        sources.map((s) => {
+          const owned = new Set(
+            s.index.projects
+              .filter((p) => byId.get(p.id) === p)
+              .map((p) => p.id),
+          );
+          return (s.index.useCases ?? []).map((useCase) => ({
+            ...useCase,
+            projects: useCase.projects.filter((id) => owned.has(id)),
+          }));
+        }),
+      ),
+    },
     warnings,
   };
+}
+
+/** One entry per id, the earliest source's winning, as for projects. */
+function firstById<T extends { id: string }>(lists: T[][]): T[] {
+  const byId = new Map<string, T>();
+  for (const entry of lists.flat()) {
+    if (!byId.has(entry.id)) byId.set(entry.id, entry);
+  }
+  return [...byId.values()];
 }
