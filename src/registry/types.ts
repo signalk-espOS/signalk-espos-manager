@@ -134,6 +134,8 @@ export interface UseCase {
 export interface RegistryIndex {
   schema: 1;
   updated?: string;
+  /** The newest espOS release, which the flasher compares each build against. */
+  esposLatest?: string;
   projects: RegistryProject[];
   /** The board catalogue; absent from indexes older than registry #18. */
   boards?: HardwareBoard[];

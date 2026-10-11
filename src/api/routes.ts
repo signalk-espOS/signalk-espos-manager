@@ -283,6 +283,28 @@ export function registerRoutes(
     }),
   );
 
+  // GET /api/registry/index — the merged index whole, for the flasher this
+  // plugin serves, so it offers the registries configured here and lists
+  // firmware from the cached copy when the boat is offline.
+  readonly.get(
+    "/api/registry/index",
+    guard((_req, res) => {
+      void (async () => {
+        try {
+          const { index } = await getService().getIndex();
+          res.json({
+            esposLatest: index.esposLatest,
+            projects: index.projects,
+            boards: index.boards ?? [],
+            useCases: index.useCases ?? [],
+          });
+        } catch (error) {
+          res.status(500).json({ error: errorMessage(error) });
+        }
+      })();
+    }),
+  );
+
   // POST /api/registry/refresh — re-read the registry now.
   router.post(
     "/api/registry/refresh",

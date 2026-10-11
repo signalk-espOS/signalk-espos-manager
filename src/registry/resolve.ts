@@ -351,6 +351,8 @@ export function mergeIndexes(
   return {
     index: {
       schema: 1,
+      esposLatest: sources.find((s) => s.index.esposLatest !== undefined)?.index
+        .esposLatest,
       projects: [...byId.values()],
       boards: firstById(sources.map((s) => s.index.boards ?? [])),
       // A source may only say what ITS projects do; otherwise any index could

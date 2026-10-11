@@ -1,15 +1,18 @@
 /**
  * The standalone flasher.
  *
- * This is the same flashing code the plugin ships, hosted on GitHub Pages so
- * it runs from an https origin. That matters because browsers only allow USB
- * access from a secure page, and a Signal K server on a boat is almost always
- * plain http on a LAN address — so the copy inside the plugin cannot flash
- * anything there and links here instead.
+ * One build serves two places. GitHub Pages hosts it on an https origin,
+ * which matters because browsers only allow USB access from a secure page and
+ * a Signal K server on a boat is almost always plain http on a LAN address.
+ * The plugin serves the same page next to its webapp, which a browser lets
+ * use USB on localhost or behind https.
  *
- * It deliberately has no dependency on a running server: a board being set up
- * for the first time has no network connection to one anyway. The firmware
- * list comes straight from the public registry.
+ * Served by the plugin, the page reads the plugin's merged registry, so it
+ * offers the registries configured there and lists firmware from the plugin's
+ * cached copy. The hosted copy needs no server at all, since a board being set
+ * up for the first time has no network connection to one anyway: its firmware
+ * list comes straight from the public registry, as does the plugin copy's when
+ * the plugin's cannot be read.
  */
 
 import { render } from "preact";
@@ -46,6 +49,47 @@ import "../src/style.css";
 
 const REGISTRY_URL =
   "https://raw.githubusercontent.com/signalk-espOS/registry/main/index.json";
+
+/** The plugin's merged index, when this page is the copy the plugin serves. */
+const PLUGIN_REGISTRY_URL = "/plugins/signalk-espos-manager/api/registry/index";
+
+const HOSTED_ORIGIN = "https://signalk-espos.github.io";
+
+interface RegistryBody {
+  projects: RegistryProject[];
+  esposLatest?: string;
+  boards?: HardwareBoard[];
+  useCases?: UseCase[];
+}
+
+async function fetchRegistry(url: string): Promise<RegistryBody> {
+  // raw.githubusercontent sends max-age=300, and the browser's copy can
+  // outlive GitHub's own, so a reload kept showing the previous release
+  // after the index moved on. no-cache revalidates by ETag on every load;
+  // GitHub's CDN may still lag the push by up to five minutes, which no
+  // request header from a page can skip.
+  const response = await fetch(url, { cache: "no-cache" });
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  const body = (await response.json()) as RegistryBody;
+  if (!Array.isArray(body.projects)) throw new Error("not a registry index");
+  return body;
+}
+
+/**
+ * The plugin's index when the plugin serves this page, else the public one.
+ * A plugin that refuses (no login, an older version without the route) falls
+ * back too: the public list is still better than none.
+ */
+async function loadRegistry(): Promise<RegistryBody> {
+  if (window.location.origin !== HOSTED_ORIGIN) {
+    try {
+      return await fetchRegistry(PLUGIN_REGISTRY_URL);
+    } catch {
+      // Fall through to the public registry.
+    }
+  }
+  return fetchRegistry(REGISTRY_URL);
+}
 
 interface RegistryBuild {
   target: string;
@@ -492,19 +536,7 @@ function App() {
   useEffect(() => {
     void (async () => {
       try {
-        // raw.githubusercontent sends max-age=300, and the browser's copy can
-        // outlive GitHub's own, so a reload kept showing the previous release
-        // after the index moved on. no-cache revalidates by ETag on every
-        // load; GitHub's CDN may still lag the push by up to five minutes,
-        // which no request header from a page can skip.
-        const response = await fetch(REGISTRY_URL, { cache: "no-cache" });
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        const body = (await response.json()) as {
-          projects: RegistryProject[];
-          esposLatest?: string;
-          boards?: HardwareBoard[];
-          useCases?: UseCase[];
-        };
+        const body = await loadRegistry();
         setProjects(body.projects);
         setEsposLatest(body.esposLatest);
         setHardware(body.boards ?? []);
