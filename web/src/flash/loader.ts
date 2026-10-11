@@ -16,6 +16,19 @@ import {
   targetFromChipName,
   USB_JTAG_SERIAL_PID,
 } from "./chips.js";
+import {
+  APP_DESC_BYTES,
+  APP_DESC_OFFSET,
+  bootPartition,
+  OTADATA_SECTOR,
+  otadataPartition,
+  parseAppDescription,
+  parsePartitionTable,
+  PARTITION_TABLE_BYTES,
+  PARTITION_TABLE_OFFSET,
+  usbId,
+  type AppDescription,
+} from "./fingerprint.js";
 import type { Target } from "./types.js";
 
 /**
@@ -27,6 +40,8 @@ import type { Target } from "./types.js";
  */
 const FLASH_ID_ATTEMPTS = 3;
 const FLASH_ID_RETRY_MS = 100;
+/** Long enough for the stub's trailing MD5 frame to arrive before a flush. */
+const FLASH_READ_SETTLE_MS = 50;
 
 const sleep = (ms: number): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, ms));
@@ -34,6 +49,7 @@ const sleep = (ms: number): Promise<void> =>
 /** Minimal shapes, so the app does not depend on esptool-js's own types. */
 interface Transport {
   getPid(): number | undefined;
+  flushInput(): void;
   disconnect(): Promise<void>;
 }
 
@@ -45,6 +61,8 @@ interface Loader {
   flashSizeBytes(flashSize: string): number;
   /** Raw JEDEC id of the flash part: 24 bits, manufacturer in the low byte. */
   readFlashId(): Promise<number>;
+  /** Reads flash through the stub. */
+  readFlash(addr: number, size: number): Promise<Uint8Array>;
   /** Radios and cores, e.g. ["Wi-Fi 6 (dual-band)", "BT 5 (LE)"]. */
   chip: {
     CHIP_NAME: string;
@@ -93,6 +111,11 @@ export interface Connection {
   mac?: string;
   /** True when the user picked Espressif's native USB port. */
   nativeUsb: boolean;
+  /** The USB ids of the port, lower-case hex: the bridge chip on most boards. */
+  usbVid?: string;
+  usbPid?: string;
+  /** The firmware already on the board, when its flash says. */
+  installed?: AppDescription;
 }
 
 let current: Connection | undefined;
@@ -269,6 +292,10 @@ export async function connect(
     /* optional */
   }
 
+  const info = (
+    port as { getInfo?(): { usbVendorId?: number; usbProductId?: number } }
+  ).getInfo?.();
+
   current = {
     transport,
     loader,
@@ -281,8 +308,53 @@ export async function connect(
     features,
     mac,
     nativeUsb: transport.getPid() === USB_JTAG_SERIAL_PID,
+    usbVid: usbId(info?.usbVendorId),
+    usbPid: usbId(info?.usbProductId),
+    installed: await readInstalled(loader, transport),
   };
   return current;
+}
+
+/**
+ * The name and version of the app the board would boot, read from its flash.
+ *
+ * Read-only and a few KB. Undefined for blank or encrypted flash, a table
+ * moved from the default offset, or any read that fails: this only labels the
+ * board, so it must never stand in the way of flashing it.
+ */
+async function readInstalled(
+  loader: Loader,
+  transport: Transport,
+): Promise<AppDescription | undefined> {
+  // esptool-js returns once it has the data and leaves the MD5 frame the stub
+  // sends after it in the input; drop it so the write starts clean.
+  const read = async (addr: number, size: number): Promise<Uint8Array> => {
+    try {
+      return await loader.readFlash(addr, size);
+    } finally {
+      await sleep(FLASH_READ_SETTLE_MS);
+      transport.flushInput();
+    }
+  };
+  try {
+    const partitions = parsePartitionTable(
+      await read(PARTITION_TABLE_OFFSET, PARTITION_TABLE_BYTES),
+    );
+    if (partitions.length === 0) return undefined;
+    const otadata = otadataPartition(partitions);
+    const boot = bootPartition(
+      partitions,
+      otadata === undefined
+        ? undefined
+        : await read(otadata.offset, 2 * OTADATA_SECTOR),
+    );
+    if (boot === undefined) return undefined;
+    return parseAppDescription(
+      await read(boot.offset, APP_DESC_OFFSET + APP_DESC_BYTES),
+    );
+  } catch {
+    return undefined;
+  }
 }
 
 export interface WriteOptions {

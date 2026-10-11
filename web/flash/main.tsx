@@ -34,6 +34,12 @@ import {
   serialSupport,
   writeImage,
 } from "../src/flash/loader.js";
+import {
+  leadingBoard,
+  likelyBoards,
+  type AppDescription,
+  type LikelyBoard,
+} from "../src/flash/fingerprint.js";
 import { preflight, type PreflightReport } from "../src/flash/preflight.js";
 import type { FlashBuild, Target } from "../src/flash/types.js";
 import "../src/style.css";
@@ -53,6 +59,8 @@ interface RegistryBuild {
 
 interface RegistryProject {
   id: string;
+  /** The firmware's project name, which its app description reports. */
+  app: string;
   name: string;
   summary?: string;
   repo: string;
@@ -245,6 +253,19 @@ function OfferLinks({ offer }: { offer: BoardOffer }) {
   );
 }
 
+/** Why a board was suggested, as the end of "…, because …". */
+function clueText(likely: LikelyBoard, installed?: AppDescription): string {
+  return likely.clues
+    .map((clue) =>
+      clue === "factory"
+        ? `its maker's own firmware (${installed?.projectName ?? "demo"}) is on it`
+        : clue === "espos"
+          ? `it already runs ${likely.project ?? "espOS firmware"} made for this board`
+          : "it has the same USB chip",
+    )
+    .join(" and ");
+}
+
 /**
  * One board and everything it can run.
  *
@@ -259,6 +280,9 @@ function BoardEntryView({
   esposLatest,
   onPick,
   prefer = [],
+  likely,
+  leading = false,
+  installed,
 }: {
   entry: BoardEntry;
   matches: boolean;
@@ -266,6 +290,10 @@ function BoardEntryView({
   esposLatest: string | undefined;
   onPick: (b: FlashBuild) => void;
   prefer?: string[];
+  /** Set when the connected board's fingerprint points here. */
+  likely?: LikelyBoard;
+  leading?: boolean;
+  installed?: AppDescription;
 }) {
   const offers = [...entry.offers].sort(
     (a, b) =>
@@ -285,6 +313,14 @@ function BoardEntryView({
       )}
       <div class="board-head">
         <span class="board-name">{entry.name}</span>
+        {likely !== undefined && (
+          <span
+            class={leading ? "pill ok" : "pill"}
+            title={`Suggested because ${clueText(likely, installed)}. Check the name against the board in front of you.`}
+          >
+            {leading ? "looks like yours" : "possible match"}
+          </span>
+        )}
         {matches && (
           <span
             class="pill ok"
@@ -431,6 +467,10 @@ function App() {
         flashSizeDetected: boolean;
         jedecId?: number;
         mac?: string;
+        target?: Target;
+        usbVid?: string;
+        usbPid?: string;
+        installed?: AppDescription;
       }
     | undefined
   >(undefined);
@@ -526,6 +566,10 @@ function App() {
         flashSizeDetected: connection.flashSizeDetected,
         jedecId: connection.jedecId,
         mac: connection.mac,
+        target: connection.target,
+        usbVid: connection.usbVid,
+        usbPid: connection.usbPid,
+        installed: connection.installed,
       });
       // Narrow the list to what this board can actually run.
       if (connection.target !== undefined) setChipFilter(connection.target);
@@ -556,6 +600,10 @@ function App() {
         flashSizeDetected: connection.flashSizeDetected,
         jedecId: connection.jedecId,
         mac: connection.mac,
+        target: connection.target,
+        usbVid: connection.usbVid,
+        usbPid: connection.usbPid,
+        installed: connection.installed,
       });
 
       // Check what the chip already told us BEFORE touching the network. The
@@ -651,10 +699,41 @@ function App() {
       : undefined;
   const openBoard =
     view.kind === "board" ? catalogue.find((e) => e.id === view.id) : undefined;
-  const shown =
+  /* Boards the connected one looks like, strongest first. They lead the list
+   * rather than replace it: every clue is a suggestion, and the owner still
+   * checks the name against the board in front of them. */
+  const likely = useMemo(
+    () =>
+      profile === undefined
+        ? []
+        : likelyBoards(
+            {
+              target: profile.target,
+              flashBytes: profile.flashBytes,
+              flashSizeDetected: profile.flashSizeDetected,
+              usbVid: profile.usbVid,
+              usbPid: profile.usbPid,
+              installed: profile.installed,
+            },
+            hardware,
+            projects ?? [],
+          ),
+    [profile, hardware, projects],
+  );
+  const lead = leadingBoard(likely);
+  const leadEntry =
+    lead === undefined ? undefined : catalogue.find((e) => e.id === lead.id);
+  const rank = (id: string): number => {
+    const at = likely.findIndex((l) => l.id === id);
+    return at === -1 ? likely.length : at;
+  };
+  const shown = (
     chipFilter === "all"
       ? catalogue
-      : catalogue.filter((entry) => entry.target === chipFilter);
+      : catalogue.filter((entry) => entry.target === chipFilter)
+  )
+    .slice()
+    .sort((a, b) => rank(a.id) - rank(b.id));
 
   /* Derived from the same catalogue as the board-first view, not projected
    * again from the registry. The hand-rolled copy this replaces had drifted in
@@ -759,6 +838,19 @@ function App() {
                 </>
               ) : (
                 <>
+                  {profile?.installed !== undefined && (
+                    <p class="small">
+                      <strong>Already on it:</strong>{" "}
+                      {profile.installed.projectName}{" "}
+                      {profile.installed.version}
+                    </p>
+                  )}
+                  {lead !== undefined && leadEntry !== undefined && (
+                    <p>
+                      This looks like a <strong>{leadEntry.name}</strong>,
+                      because {clueText(lead, profile?.installed)}.
+                    </p>
+                  )}
                   <p class="muted small">
                     Showing boards that use the{" "}
                     <strong>{profile?.description ?? chipName}</strong> you
@@ -928,6 +1020,9 @@ function App() {
                           busy={busy}
                           esposLatest={esposLatest}
                           onPick={(b) => void onPick(b)}
+                          likely={likely.find((l) => l.id === entry.id)}
+                          leading={lead?.id === entry.id}
+                          installed={profile?.installed}
                         />
                       ))}
                     </ul>
