@@ -30,6 +30,9 @@ describe("defaults", () => {
     // One at a time: several devices pulling firmware over one boat wifi is
     // how a fleet update goes wrong.
     expect(settings.ota.maxConcurrent).toBe(1);
+    // Panels dim only at night; without this, a boat with no
+    // signalk-derived-data never tells them it is night.
+    expect(settings.dayNight.publishMode).toBe(true);
   });
 
   it("does not provision keys onto hardware without being asked", () => {

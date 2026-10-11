@@ -246,12 +246,29 @@ export const OtaSchema = Type.Object(
   { title: "Updates", default: {} },
 );
 
+export const DayNightSchema = Type.Object(
+  {
+    publishMode: Type.Boolean({
+      title: "Publish day and night",
+      default: true,
+      description:
+        "Work out whether the Sun is up at the boat's position and publish " +
+        "it as environment.mode, which espOS panels use to dim only at " +
+        "night. Computed on this server with no internet. Turn it off if " +
+        "another plugin, such as signalk-derived-data, already publishes " +
+        "environment.mode.",
+    }),
+  },
+  { title: "Day and night", default: {} },
+);
+
 export const SettingsSchema = Type.Object({
   discovery: DiscoverySchema,
   auth: AuthSchema,
   registry: RegistrySchema,
   mirror: MirrorSchema,
   ota: OtaSchema,
+  dayNight: DayNightSchema,
 });
 
 export type DiscoverySettings = Static<typeof DiscoverySchema>;
@@ -259,6 +276,7 @@ export type AuthSettings = Static<typeof AuthSchema>;
 export type RegistrySettings = Static<typeof RegistrySchema>;
 export type MirrorSettings = Static<typeof MirrorSchema>;
 export type OtaSettings = Static<typeof OtaSchema>;
+export type DayNightSettings = Static<typeof DayNightSchema>;
 export type ManagerSettings = Static<typeof SettingsSchema>;
 
 export function defaultSettings(): ManagerSettings {
