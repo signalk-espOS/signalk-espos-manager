@@ -46,6 +46,13 @@ default settings; you can still turn it off under Plugin Config.
 The plugin adds an **espOS Manager** webapp to the Signal K server, with three
 pages: **Devices**, **Firmware** and **New board**.
 
+**Devices** names each board the way the flasher does: the product from the
+registry's board catalogue, with its photo once the catalogue has one, and the
+jobs its firmware does there, such as "Show instruments on a touch screen". A
+device whose firmware does not report its board, or whose image runs on
+several boards, is shown by its chip instead, since a wrong product name is
+worse than none.
+
 ### Installing firmware on a new board
 
 For a board that has never been on your network.
@@ -141,6 +148,8 @@ than offering an update that would be refused after the download.
 The plugin talks to devices on your own network and fetches the project
 registry and firmware from GitHub over HTTPS. Nothing about your boat is sent
 anywhere. With the mirror enabled, devices never contact the internet at all.
+Board photos are loaded by your browser from wherever the registry's catalogue
+points, and simply do not appear without internet.
 
 ## Roadmap
 

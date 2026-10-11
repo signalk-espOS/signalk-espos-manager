@@ -10,6 +10,8 @@ import { PUBLIC_FW_BASE } from "../config.js";
 import { isProvisionalId } from "../fleet/poller.js";
 import { manifestPathFor } from "../mirror/manifest.js";
 import { needsOtaRepair } from "../ota/configure.js";
+import type { DeviceHardware } from "../registry/hardware.js";
+import type { HardwareBoard } from "../registry/types.js";
 import type { CoprocessorInfo, DeviceRecord } from "../types.js";
 
 export interface DeviceDto {
@@ -32,6 +34,10 @@ export interface DeviceDto {
   esposVersion?: string;
   target?: string;
   board?: string;
+  /** The catalogue product `board` names, when exactly one does. */
+  hardware?: HardwareBoard;
+  /** The jobs this device's firmware does on its board, in owners' words. */
+  useCases?: { id: string; title: string }[];
   chip?: string;
   mac?: string;
   flashBytes?: number;
@@ -67,13 +73,22 @@ export type BoardIdFor = (
   reported: string | undefined,
 ) => string | undefined | null;
 
+/** The catalogue board and jobs for a device's app and reported board. */
+export type HardwareFor = (
+  app: string | undefined,
+  reported: string | undefined,
+) => DeviceHardware;
+
 export function serializeDevice(
   record: DeviceRecord,
   keys?: KeyStore,
   boardIdFor?: BoardIdFor,
+  hardwareFor?: HardwareFor,
 ): DeviceDto {
   const snapshot = record.snapshot;
   const info = snapshot?.info;
+  const board = snapshot?.board ?? info?.hardware?.board;
+  const hardware = hardwareFor?.(snapshot?.app, board);
   return {
     id: record.identity.id,
     identified: !isProvisionalId(record.identity.id),
@@ -93,7 +108,12 @@ export function serializeDevice(
     // Only mDNS reports this; /system/info does not carry it.
     esposVersion: snapshot?.esposVersion,
     target: snapshot?.target ?? snapshot?.ota?.running?.target,
-    board: snapshot?.board ?? info?.hardware?.board,
+    board,
+    hardware: hardware?.board,
+    useCases:
+      hardware === undefined || hardware.useCases.length === 0
+        ? undefined
+        : hardware.useCases,
     chip: info?.chip,
     // Hardware the device measures about itself. Worth surfacing because
     // "which board is this and what is in it" is the first question when
@@ -211,9 +231,10 @@ export function serializeFleet(
   warnings: string[],
   keys?: KeyStore,
   boardIdFor?: BoardIdFor,
+  hardwareFor?: HardwareFor,
 ): FleetDto {
   const devices = records.map((record) =>
-    serializeDevice(record, keys, boardIdFor),
+    serializeDevice(record, keys, boardIdFor, hardwareFor),
   );
   return {
     devices,

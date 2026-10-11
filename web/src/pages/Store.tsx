@@ -65,6 +65,9 @@ export function StorePage() {
           const installed = runningApps.has(project.app);
           const compatible = project.targets.some((t) => targets.has(t));
           const latest = project.releases?.[0];
+          const jobs = (registry.useCases ?? [])
+            .filter((u) => u.projects.includes(project.id))
+            .map((u) => u.title);
           return (
             <li class="card" key={project.id}>
               <h3>
@@ -84,6 +87,7 @@ export function StorePage() {
                   )}
               </h3>
               {project.summary !== undefined && <p>{project.summary}</p>}
+              {jobs.length > 0 && <p class="small">Does: {jobs.join(" · ")}</p>}
               <p class="muted small">
                 {latest !== undefined
                   ? `Latest ${latest.version}`

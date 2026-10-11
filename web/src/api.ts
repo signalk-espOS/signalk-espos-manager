@@ -86,6 +86,18 @@ export interface DeviceDto {
   esposVersion?: string;
   target?: string;
   board?: string;
+  /** The registry catalogue's product for `board`, when exactly one matches. */
+  hardware?: {
+    id: string;
+    name: string;
+    vendor?: string;
+    model?: string;
+    image?: string;
+    imageCredit?: string;
+    buyUrl?: string;
+  };
+  /** What this device's firmware does on its board, in owners' words. */
+  useCases?: { id: string; title: string }[];
   chip?: string;
   /** Hardware the device measures about itself (espOS 0.10+). */
   mac?: string;
@@ -187,6 +199,8 @@ export interface RegistryDto {
       builds?: { target: string; boardId?: string; mergedUrl?: string }[];
     }[];
   }[];
+  /** The jobs owners pick from in the flasher, and which projects do them. */
+  useCases?: { id: string; title: string; projects: string[] }[];
   stale: boolean;
   fetchedAt?: string;
   reason?: string;

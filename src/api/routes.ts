@@ -78,6 +78,7 @@ export function registerRoutes(
           service.fleet.getWarnings(),
           service.getKeys(),
           (app, board) => service.boardIdFor(app, board),
+          (app, board) => service.hardwareFor(app, board),
         ),
         fleetKey: service.fleetKeyStatus(),
       });
@@ -95,8 +96,11 @@ export function registerRoutes(
         return res.status(404).json({ error: `no device ${id}` });
       }
       return res.json(
-        serializeDevice(device, service.getKeys(), (app, board) =>
-          service.boardIdFor(app, board),
+        serializeDevice(
+          device,
+          service.getKeys(),
+          (app, board) => service.boardIdFor(app, board),
+          (app, board) => service.hardwareFor(app, board),
         ),
       );
     }),
@@ -260,6 +264,9 @@ export function registerRoutes(
           const result = await getService().getIndex();
           res.json({
             projects: result.index.projects,
+            useCases: (result.index.useCases ?? []).map(
+              ({ id, title, projects }) => ({ id, title, projects }),
+            ),
             updated: result.index.updated,
             stale: result.stale,
             fetchedAt:

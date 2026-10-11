@@ -577,3 +577,16 @@ code {
   object-fit: contain;
   margin-bottom: 4px;
 }
+
+/* A catalogue photo beside a fleet row: enough to recognise the board, small
+   enough that a long list stays a list. */
+.device-thumb {
+  flex: 0 0 auto;
+  width: 4rem;
+  height: 3rem;
+  object-fit: contain;
+  align-self: center;
+}
+.device-photo {
+  margin: 0 0 8px;
+}

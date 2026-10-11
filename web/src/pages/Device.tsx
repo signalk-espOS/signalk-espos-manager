@@ -1,6 +1,7 @@
 import { useState } from "preact/hooks";
 import { api, isJobFinished } from "../api.js";
 import { useStore } from "../store.js";
+import { BoardPhoto } from "./BoardPhoto.js";
 import { CoprocessorCard } from "./Coprocessor.js";
 
 function bytes(value: number | undefined): string {
@@ -76,6 +77,20 @@ export function DevicePage() {
 
       <div class="card">
         <h2>{device.hostname ?? device.id}</h2>
+        {device.hardware?.image !== undefined && (
+          <figure class="device-photo">
+            <BoardPhoto
+              key={device.hardware.image}
+              class="board-photo"
+              src={device.hardware.image}
+            />
+            {device.hardware.imageCredit !== undefined && (
+              <figcaption class="muted small">
+                Photo: {device.hardware.imageCredit}
+              </figcaption>
+            )}
+          </figure>
+        )}
         <dl class="facts">
           <dt>Firmware</dt>
           <dd>
@@ -103,10 +118,47 @@ export function DevicePage() {
             answer to "what hardware is this", and the vendor/model string is
             long enough that sharing a line with the chip truncates it.
           */}
-          {device.board !== undefined && (
+          {device.hardware !== undefined ? (
             <>
               <dt>Board</dt>
-              <dd>{device.board}</dd>
+              <dd>
+                {device.hardware.name}
+                {device.hardware.model !== undefined && (
+                  <span class="muted small">
+                    {" "}
+                    (
+                    {[device.hardware.vendor, device.hardware.model]
+                      .filter((part) => part !== undefined)
+                      .join(" ")}
+                    )
+                  </span>
+                )}
+                {device.hardware.buyUrl !== undefined && (
+                  <>
+                    {" · "}
+                    <a
+                      href={device.hardware.buyUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      shop page
+                    </a>
+                  </>
+                )}
+              </dd>
+            </>
+          ) : (
+            device.board !== undefined && (
+              <>
+                <dt>Board</dt>
+                <dd>{device.board}</dd>
+              </>
+            )
+          )}
+          {device.useCases !== undefined && (
+            <>
+              <dt>Does</dt>
+              <dd>{device.useCases.map((u) => u.title).join(" · ")}</dd>
             </>
           )}
           {device.mac !== undefined && (
