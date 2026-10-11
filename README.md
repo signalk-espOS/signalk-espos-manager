@@ -68,6 +68,14 @@ plain http, the page sends you to the
 which does the same thing. The page also offers each image as a download for
 writing with `esptool`.
 
+The hosted flasher starts by asking what the board should do: show
+instruments on a touch screen, bring Bluetooth sensors into Signal K, switch
+loads, or connect an NMEA 2000 network. Each job lists the boards that do it,
+best first, as the registry ranks them, and each board leads to its firmware
+and where to buy it. Someone who already has a board picks **I already have
+a board** and finds it in the list, or plugs it in to filter by chip. The jobs
+and boards come from the registry's `usecases/` and `boards/` catalogue.
+
 ### Updating a device
 
 1. Open the device from **Devices**. Its **Firmware updates** card shows the
