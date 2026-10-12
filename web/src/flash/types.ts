@@ -34,6 +34,8 @@ export interface FlashBuild {
   mergedWebUrl?: string;
   mergedBytes?: number;
   mergedSha256?: string;
+  /** The application image alone: what has to fit in an app slot. */
+  otaBytes?: number;
   boardId?: string;
   /** True when the build was made with a throwaway key: no future updates. */
   unsigned?: boolean;

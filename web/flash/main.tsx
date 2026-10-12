@@ -43,6 +43,7 @@ import {
   type AppDescription,
   type LikelyBoard,
 } from "../src/flash/fingerprint.js";
+import { flashLayout, parsePartitionTable } from "../src/flash/partitions.js";
 import { preflight, type PreflightReport } from "../src/flash/preflight.js";
 import type { FlashBuild, Target } from "../src/flash/types.js";
 import "../src/style.css";
@@ -618,6 +619,9 @@ function App() {
 
   const onPick = async (chosen: FlashBuild): Promise<void> => {
     setBuild(chosen);
+    // The previous pick's header would otherwise describe this build's layout
+    // until the new one arrives.
+    setHead(undefined);
     setError(undefined);
     setDownloadError(undefined);
     setBusy(true);
@@ -787,6 +791,14 @@ function App() {
     () => allBuilds(projects ?? []),
     [projects],
   );
+
+  // The chip says how much flash it has; only the image says how much of it
+  // the firmware lays out and how full its app slot is.
+  const partitions = head === undefined ? undefined : parsePartitionTable(head);
+  const layout =
+    partitions === undefined || build === undefined
+      ? undefined
+      : flashLayout(partitions, build.otaBytes);
 
   return (
     <main class="shell">
@@ -1169,6 +1181,29 @@ function App() {
                               : `${mb(profile.flashBytes)} assumed — this flash chip is not one we recognise (id 0x${profile.jedecId.toString(16).padStart(6, "0")})`}
                       </dd>
                     </div>
+                    {layout !== undefined && (
+                      <div>
+                        <dt>Partitioned</dt>
+                        <dd>
+                          {mb(layout.partitionedBytes)}
+                          {profile?.flashBytes !== undefined &&
+                            profile.flashSizeDetected &&
+                            ` of the board's ${mb(profile.flashBytes)}`}
+                        </dd>
+                      </div>
+                    )}
+                    {layout?.appSlotBytes !== undefined && (
+                      <div>
+                        <dt>App slot</dt>
+                        <dd>
+                          {mb(layout.appSlotBytes)}
+                          {layout.appBytes !== undefined &&
+                            `, this firmware fills ${mb(layout.appBytes)} (${Math.round(
+                              (100 * layout.appBytes) / layout.appSlotBytes,
+                            )}%)`}
+                        </dd>
+                      </div>
+                    )}
                     {profile?.features !== undefined &&
                       profile.features.length > 0 && (
                         <div>

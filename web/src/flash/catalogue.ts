@@ -61,6 +61,7 @@ export interface CatalogueBuild {
   mergedWebUrl?: string;
   mergedBytes?: number;
   otaUrl?: string;
+  otaBytes?: number;
   boardId?: string;
   unsigned?: boolean;
 }
@@ -301,6 +302,7 @@ function toBuild(
     mergedUrl: b.mergedUrl as string,
     mergedWebUrl: b.mergedWebUrl,
     mergedBytes: b.mergedBytes,
+    otaBytes: b.otaBytes,
     boardId: b.boardId,
     unsigned: isUnsignedBuild(project, b) || undefined,
     channel: release.channel,
