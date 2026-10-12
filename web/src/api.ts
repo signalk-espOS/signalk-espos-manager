@@ -102,6 +102,8 @@ export interface DeviceDto {
   /** Hardware the device measures about itself (espOS 0.10+). */
   mac?: string;
   flashBytes?: number;
+  flashPhysicalBytes?: number;
+  flashPartitionedBytes?: number;
   psramBytes?: number;
   coprocessor?: {
     version?: string;

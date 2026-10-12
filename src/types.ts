@@ -128,7 +128,12 @@ export interface CoprocessorUpdateStatus {
 export interface HardwareInfo {
   mac?: string;
   cpuMhz?: number;
+  /** The size the firmware image was built for, from its header. */
   flashBytes?: number;
+  /** The chip's own size, on newer espOS; can be larger than `flashBytes`. */
+  flashPhysicalBytes?: number;
+  /** Where the last partition ends, on newer espOS. */
+  flashPartitionedBytes?: number;
   ramInternalBytes?: number;
   ramPsramBytes?: number;
   features?: string[];

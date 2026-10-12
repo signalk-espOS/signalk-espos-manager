@@ -206,6 +206,34 @@ describe("FleetState", () => {
     expect(serializeDevice(record()).otaNeedsRepair).toBe(false);
   });
 
+  it("shows the chip's flash, and how much of it is partitioned", () => {
+    const fleet = new FleetState();
+    fleet.applyIdentities(new Map([["2be9", identity("2be9")]]), NOW);
+    fleet.recordSuccess(
+      "2be9",
+      {
+        ...snapshot(),
+        info: {
+          app: "cockpit",
+          version: "1.5.3",
+          hardware: {
+            flashBytes: 16777216,
+            flashPhysicalBytes: 33554432,
+            flashPartitionedBytes: 15794176,
+          },
+        },
+      } as DeviceSnapshot,
+      "open",
+      NOW,
+    );
+    const r = fleet.get("2be9");
+    if (r === undefined) throw new Error("device vanished");
+    const device = serializeDevice(r);
+    expect(device.flashBytes).toBe(16777216);
+    expect(device.flashPhysicalBytes).toBe(33554432);
+    expect(device.flashPartitionedBytes).toBe(15794176);
+  });
+
   it("does not treat a failed probe as a sighting", () => {
     const fleet = new FleetState();
     fleet.applyIdentities(new Map([["2be9", identity("2be9")]]), NOW);
