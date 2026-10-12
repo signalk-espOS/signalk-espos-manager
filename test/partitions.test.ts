@@ -8,6 +8,7 @@
 import { describe, expect, it } from "vitest";
 import {
   flashLayout,
+  IMAGE_HEAD_BYTES,
   parsePartitionTable,
   type Partition,
 } from "../web/src/flash/partitions.js";
@@ -86,6 +87,38 @@ describe("flashLayout", () => {
       p.label === "ota_1" ? { ...p, size: 0x200000 } : p,
     );
     expect(flashLayout(uneven).appSlotBytes).toBe(0x200000);
+  });
+
+  it("finds a table past the first 64 KiB within the head the page reads", () => {
+    const far = imageWithTable(GATEWAY_C5, 0x10000, IMAGE_HEAD_BYTES);
+    expect(parsePartitionTable(far)).toEqual(GATEWAY_C5);
+  });
+
+  it("sizes the update slot from the OTA slots, not a smaller factory", () => {
+    const withFactory: Partition[] = [
+      {
+        label: "factory",
+        type: 0,
+        subtype: 0x00,
+        offset: 0x10000,
+        size: 0x100000,
+      },
+      {
+        label: "ota_0",
+        type: 0,
+        subtype: 0x10,
+        offset: 0x110000,
+        size: 0x300000,
+      },
+      {
+        label: "ota_1",
+        type: 0,
+        subtype: 0x11,
+        offset: 0x410000,
+        size: 0x300000,
+      },
+    ];
+    expect(flashLayout(withFactory).appSlotBytes).toBe(0x300000);
   });
 
   it("counts a factory partition as an app slot", () => {

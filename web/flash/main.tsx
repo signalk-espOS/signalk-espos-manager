@@ -43,7 +43,11 @@ import {
   type AppDescription,
   type LikelyBoard,
 } from "../src/flash/fingerprint.js";
-import { flashLayout, parsePartitionTable } from "../src/flash/partitions.js";
+import {
+  flashLayout,
+  IMAGE_HEAD_BYTES,
+  parsePartitionTable,
+} from "../src/flash/partitions.js";
 import { preflight, type PreflightReport } from "../src/flash/preflight.js";
 import type { FlashBuild, Target } from "../src/flash/types.js";
 import "../src/style.css";
@@ -662,7 +666,7 @@ function App() {
           throw new NoWebUrlError();
         }
         const response = await fetch(url, {
-          headers: { Range: "bytes=0-65535" },
+          headers: { Range: `bytes=0-${IMAGE_HEAD_BYTES - 1}` },
         });
         if (!response.ok) {
           throw new HttpStatusError(response.status);

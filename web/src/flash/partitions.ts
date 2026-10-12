@@ -18,6 +18,12 @@ const ENTRY_BYTES = 32;
 const DEFAULT_TABLE_OFFSET = 0x8000;
 /** The table is at most one 4 KiB sector. */
 const TABLE_MAX_BYTES = 0x1000;
+/**
+ * How much of the image the page reads before writing. ESP-IDF lets a project
+ * move the table past 0x8000 when its bootloader outgrows the gap, so this
+ * covers a table up to 0x1f000, not just the default.
+ */
+export const IMAGE_HEAD_BYTES = 0x20000;
 
 const TYPE_APP = 0x00;
 const SUBTYPE_FACTORY = 0x00;
@@ -87,7 +93,10 @@ export function parsePartitionTable(head: Uint8Array): Partition[] | undefined {
 export interface FlashLayout {
   /** Where the last partition ends: the flash the firmware actually uses. */
   partitionedBytes: number;
-  /** The app slot an update has to fit in (the smallest one, if they differ). */
+  /**
+   * The slot an update has to fit in: the smallest OTA slot, or the factory
+   * partition on a table without OTA slots, since OTA never writes factory.
+   */
   appSlotBytes?: number;
   /** The application image, when the build states its size. */
   appBytes?: number;
@@ -100,12 +109,14 @@ export function flashLayout(
   const partitionedBytes = Math.max(
     ...partitions.map((p) => p.offset + p.size),
   );
-  const appSlots = partitions.filter(
-    (p) =>
-      p.type === TYPE_APP &&
-      (p.subtype === SUBTYPE_FACTORY ||
-        (p.subtype >= SUBTYPE_OTA_MIN && p.subtype <= SUBTYPE_OTA_MAX)),
+  const apps = partitions.filter((p) => p.type === TYPE_APP);
+  const otaSlots = apps.filter(
+    (p) => p.subtype >= SUBTYPE_OTA_MIN && p.subtype <= SUBTYPE_OTA_MAX,
   );
+  const appSlots =
+    otaSlots.length > 0
+      ? otaSlots
+      : apps.filter((p) => p.subtype === SUBTYPE_FACTORY);
   const appSlotBytes =
     appSlots.length > 0 ? Math.min(...appSlots.map((p) => p.size)) : undefined;
   return { partitionedBytes, appSlotBytes, appBytes };
