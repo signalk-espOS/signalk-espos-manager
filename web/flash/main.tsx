@@ -21,6 +21,7 @@ import {
   allBuilds,
   boardCatalogue,
   esposLag,
+  forFlash,
   isPrerelease,
   targetsInCatalogue,
   type BoardEntry,
@@ -621,7 +622,8 @@ function App() {
     }
   };
 
-  const onPick = async (chosen: FlashBuild): Promise<void> => {
+  const onPick = async (picked: FlashBuild): Promise<void> => {
+    let chosen = picked;
     setBuild(chosen);
     // The previous pick's header would otherwise describe this build's layout
     // until the new one arrives.
@@ -648,6 +650,15 @@ function App() {
         usbPid: connection.usbPid,
         installed: connection.installed,
       });
+
+      // The release may carry this build once per flash size; write the one
+      // laid out for this chip.
+      chosen = forFlash(
+        picked,
+        connection.flashBytes,
+        connection.flashSizeDetected,
+      );
+      setBuild(chosen);
 
       // Check what the chip already told us BEFORE touching the network. The
       // chip and fit checks need no download, and they are the two that catch

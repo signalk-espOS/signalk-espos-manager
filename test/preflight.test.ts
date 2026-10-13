@@ -20,6 +20,7 @@ import {
   checkChip,
   checkFit,
   checkImage,
+  imageFlashBytes,
   preflight,
   SAFE_FLASH_PARAMS,
   type PreflightInput,
@@ -393,5 +394,52 @@ describe("FLASH_SIZE_BY_ID", () => {
 
   it("has no entry for an id esptool-js would fall back on", () => {
     expect(FLASH_SIZE_BY_ID[0x00]).toBeUndefined();
+  });
+});
+
+describe("the flash size an image is laid out for", () => {
+  /** A merged image whose bootloader header declares `mb` of flash. */
+  function laidOutFor(target: "esp32c6" | "esp32p4", mb: number): Uint8Array {
+    const head = mergedImage(target);
+    const code = [1, 2, 4, 8, 16, 32, 64, 128].indexOf(mb);
+    head[BOOTLOADER_FLASH_OFFSET[target] + 3] = code << 4;
+    return head;
+  }
+
+  it("reads it from the bootloader header", () => {
+    expect(
+      imageFlashBytes(
+        input({ buildTarget: "esp32p4", imageHead: laidOutFor("esp32p4", 16) }),
+      ),
+    ).toBe(16 * 1024 * 1024);
+  });
+
+  it("refuses an image laid out for more flash than the board has", () => {
+    // A 5.9 MB image fits an 8 MB board, but its 16 MB header stops ESP-IDF
+    // at boot: the write succeeds and the board never starts.
+    const result = checkFit(
+      input({
+        detectedTarget: "esp32c6",
+        buildTarget: "esp32c6",
+        detectedFlashBytes: 8 * 1024 * 1024,
+        imageBytes: 5_900_000,
+        imageHead: laidOutFor("esp32c6", 16),
+      }),
+    );
+    expect(result.ok).toBe(false);
+    expect(result.message).toMatch(/laid out for 16\.0 MB/);
+  });
+
+  it("accepts an image laid out for less flash than the board has", () => {
+    const result = checkFit(
+      input({ imageBytes: 5_900_000, imageHead: laidOutFor("esp32p4", 8) }),
+    );
+    expect(result.ok).toBe(true);
+  });
+
+  it("says nothing about it without a bootloader at the chip's offset", () => {
+    expect(
+      imageFlashBytes(input({ imageHead: new Uint8Array(0x10000) })),
+    ).toBeUndefined();
   });
 });

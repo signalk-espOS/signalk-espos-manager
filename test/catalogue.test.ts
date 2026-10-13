@@ -18,6 +18,7 @@ import {
   type CatalogueProject,
   type HardwareBoard,
   esposLag,
+  forFlash,
   isPrerelease,
 } from "../web/src/flash/catalogue.js";
 
@@ -1124,5 +1125,59 @@ describe("hardware catalogue", () => {
       "waveshare-p4-poe-eth",
       "waveshare-p4-touch-7b",
     ]);
+  });
+});
+
+describe("forFlash", () => {
+  const MB = 1024 * 1024;
+  const build = allBuilds([
+    {
+      ...gateway,
+      releases: [
+        {
+          version: "1.3.0",
+          channel: "stable",
+          builds: [
+            {
+              target: "esp32c6",
+              mergedUrl: "https://example.invalid/merged.bin",
+              mergedWebUrl: "https://web.invalid/merged.bin",
+              mergedBytes: 5_900_000,
+              mergedByFlash: [
+                {
+                  flashBytes: 8 * MB,
+                  url: "https://example.invalid/8mb.bin",
+                  webUrl: "https://web.invalid/8mb.bin",
+                  bytes: 6_300_000,
+                },
+                {
+                  flashBytes: 16 * MB,
+                  url: "https://example.invalid/16mb.bin",
+                  webUrl: "https://web.invalid/16mb.bin",
+                  bytes: 6_500_000,
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    },
+  ]).find((b) => b.target === "esp32c6");
+
+  it("carries the per-size images from the index", () => {
+    expect(build?.mergedByFlash).toHaveLength(2);
+  });
+
+  it("takes the largest layout that fits the chip", () => {
+    const sized = forFlash(build!, 32 * MB, true);
+    expect(sized.mergedWebUrl).toBe("https://web.invalid/16mb.bin");
+    expect(sized.layoutFlashBytes).toBe(16 * MB);
+    expect(forFlash(build!, 8 * MB, true).mergedBytes).toBe(6_300_000);
+  });
+
+  it("keeps the default image when nothing fits, or the size is a guess", () => {
+    expect(forFlash(build!, 4 * MB, true)).toBe(build);
+    expect(forFlash(build!, 8 * MB, false)).toBe(build);
+    expect(forFlash(build!, undefined, true)).toBe(build);
   });
 });

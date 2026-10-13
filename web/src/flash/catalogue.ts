@@ -43,7 +43,7 @@
  * is a bug waiting to happen. */
 import { compareVersions } from "../../../src/mirror/version.js";
 import { isUnsignedBuild } from "../../../src/registry/unsigned.js";
-import type { FlashBuild, Target } from "./types.js";
+import type { FlashBuild, FlashImage, Target } from "./types.js";
 
 /** The subset of the registry index this module reads. */
 export interface CatalogueBuild {
@@ -60,6 +60,8 @@ export interface CatalogueBuild {
    */
   mergedWebUrl?: string;
   mergedBytes?: number;
+  /** The same build per flash size, smallest first (registry `mergedByFlash`). */
+  mergedByFlash?: FlashImage[];
   otaUrl?: string;
   otaBytes?: number;
   boardId?: string;
@@ -113,6 +115,8 @@ export interface HardwareBoard {
   buyUrl?: string;
   notes?: string;
   flashBytes?: number;
+  /** Every flash size the board is sold with, when there are several. */
+  flashSizes?: number[];
   /** A hint toward this board when plugged in; many boards share a bridge. */
   usbBridge?: { chip?: string; vid?: string; pid?: string };
   /** Project names the vendor's own demo firmware reports. */
@@ -302,6 +306,7 @@ function toBuild(
     mergedUrl: b.mergedUrl as string,
     mergedWebUrl: b.mergedWebUrl,
     mergedBytes: b.mergedBytes,
+    mergedByFlash: b.mergedByFlash,
     otaBytes: b.otaBytes,
     boardId: b.boardId,
     unsigned: isUnsignedBuild(project, b) || undefined,
@@ -722,4 +727,39 @@ export function defaultBuilds(projects: CatalogueProject[]): FlashBuild[] {
     }
   }
   return [...out, ...perChip.values()];
+}
+
+/**
+ * The build's image for the connected chip's flash size.
+ *
+ * Many boards are sold with 4, 8, 16 or 32 MB, and a partition table is fixed
+ * to one size, so a release can carry the same build laid out once per size.
+ * The largest that fits wins: bigger app slots leave room for later releases,
+ * and a board only ever leaves its table again over USB. An assumed size is
+ * not a reading -- esptool-js answers "4 MB" when it could not read the chip --
+ * so it keeps the default image rather than shrink the layout on a guess.
+ */
+export function forFlash(
+  build: FlashBuild,
+  flashBytes: number | undefined,
+  flashSizeDetected: boolean,
+): FlashBuild {
+  const images = build.mergedByFlash ?? [];
+  if (images.length === 0 || flashBytes === undefined || !flashSizeDetected) {
+    return build;
+  }
+  let best: FlashImage | undefined;
+  for (const image of images) {
+    if (image.flashBytes > flashBytes) continue;
+    if (best === undefined || image.flashBytes > best.flashBytes) best = image;
+  }
+  if (best === undefined) return build;
+  return {
+    ...build,
+    mergedUrl: best.url,
+    mergedWebUrl: best.webUrl,
+    mergedBytes: best.bytes,
+    mergedSha256: best.sha256,
+    layoutFlashBytes: best.flashBytes,
+  };
 }
