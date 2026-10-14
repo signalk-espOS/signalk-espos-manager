@@ -55,6 +55,16 @@ describe("dayNight", () => {
     expect(dayNight(new Date("2024-06-21T23:30:00Z"), svalbard)).toBe("day");
     expect(dayNight(new Date("2024-12-21T12:00:00Z"), svalbard)).toBe("night");
   });
+
+  it("is day when the Sun only grazes the horizon before the polar night", () => {
+    // The centre stays below -0.211°, but the upper limb clears the horizon.
+    expect(
+      dayNight(new Date("2024-11-22T11:29:40Z"), {
+        latitude: 70.5,
+        longitude: 0,
+      }),
+    ).toBe("day");
+  });
 });
 
 describe("readPosition", () => {

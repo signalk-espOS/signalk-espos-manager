@@ -6,17 +6,10 @@
  * files, so this keeps working offshore.
  */
 
-import { sunAltAz } from "@openwaters/almanac";
+import { sunIsUp } from "@openwaters/almanac";
 import type { Path, ServerAPI } from "@signalk/server-api";
 
 export type DayNightMode = "day" | "night";
-
-/**
- * Almanac's refracted altitude of the Sun's centre at its own rise and set:
- * the upper limb on the horizon. Day is "any of the Sun is up", which lands
- * within a minute of the rise and set Almanac's sunEvents reports.
- */
-export const SUNSET_ALTITUDE_DEG = -0.211;
 
 const PUBLISH_INTERVAL_MS = 60_000;
 
@@ -25,12 +18,19 @@ export interface Position {
   longitude: number;
 }
 
+/**
+ * Day is "any of the Sun is up", by the same horizon and disc Almanac uses
+ * for its sunrise and sunset, so the mode switches at those events. A fixed
+ * altitude threshold drifts from them by the Sun's changing size, enough to
+ * call a grazing polar sunrise night.
+ */
 export function dayNight(date: Date, position: Position): DayNightMode {
-  const { altDeg } = sunAltAz(date, {
+  return sunIsUp(date, {
     latitudeDeg: position.latitude,
     longitudeDeg: position.longitude,
-  });
-  return altDeg > SUNSET_ALTITUDE_DEG ? "day" : "night";
+  })
+    ? "day"
+    : "night";
 }
 
 /**
