@@ -16,6 +16,15 @@ export type Target =
 export type FlashStep =
   "select" | "connect" | "verify" | "write" | "done" | "error";
 
+/** One full-flash image of a build, laid out for one flash size. */
+export interface FlashImage {
+  flashBytes: number;
+  url: string;
+  webUrl?: string;
+  bytes?: number;
+  sha256?: string;
+}
+
 export interface FlashBuild {
   projectId: string;
   projectName: string;
@@ -34,6 +43,13 @@ export interface FlashBuild {
   mergedWebUrl?: string;
   mergedBytes?: number;
   mergedSha256?: string;
+  /**
+   * The same build laid out for each flash size, smallest first. The page
+   * writes the largest that fits the connected chip (`forFlash`).
+   */
+  mergedByFlash?: FlashImage[];
+  /** The flash size the merged image is laid out for, once one was picked. */
+  layoutFlashBytes?: number;
   /** The application image alone: what has to fit in an app slot. */
   otaBytes?: number;
   boardId?: string;

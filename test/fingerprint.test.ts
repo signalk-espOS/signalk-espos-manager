@@ -268,6 +268,19 @@ describe("which board this looks like", () => {
     expect(leadingBoard(likely)?.id).toBe("waveshare-p4-touch-x-7");
   });
 
+  it("matches a board sold in several sizes on any of them", () => {
+    const sized: HardwareBoard[] = [
+      { ...hardware[0]!, flashSizes: [16 * 1048576, 32 * 1048576] },
+      ...hardware.slice(1),
+    ];
+    const likely = likelyBoards(
+      { ...p4, flashBytes: 16 * 1048576, flashSizeDetected: true },
+      sized,
+      projects,
+    );
+    expect(likely.map((l) => l.id)).toContain("waveshare-p4-touch-7b");
+  });
+
   it("ignores a flash size that was only guessed", () => {
     const likely = likelyBoards(
       { ...p4, flashBytes: 4 * 1048576, flashSizeDetected: false },

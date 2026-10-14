@@ -145,11 +145,46 @@ export function checkFit(input: PreflightInput): CheckResult {
         `flash size could not be read.`,
     };
   }
+  // A small image can still be laid out for more flash than the chip has. The
+  // bootloader then hands the app a flash size the chip cannot back, and ESP-IDF
+  // stops at boot ("Detected size smaller than the size in the binary image
+  // header"), so the write succeeds and the board never starts.
+  const layout = imageFlashBytes(input);
+  if (layout !== undefined && layout > input.detectedFlashBytes) {
+    return {
+      id: "fit",
+      ok: false,
+      message:
+        `This firmware is laid out for ${mb(layout)} of flash, but this ` +
+        `board has ${mb(input.detectedFlashBytes)}: it would not start. ` +
+        `Pick a release that offers an image for this flash size.`,
+    };
+  }
   return {
     id: "fit",
     ok: true,
     message: `Fits in ${(input.detectedFlashBytes / (1024 * 1024)).toFixed(0)} MB of flash.`,
   };
+}
+
+/** The flash size field of a bootloader image header, by its code. */
+const FLASH_SIZE_BY_CODE = [1, 2, 4, 8, 16, 32, 64, 128];
+
+/**
+ * The flash size a merged image's bootloader header declares, which is the
+ * size the running firmware uses. Undefined without the image's head or a
+ * bootloader at the chip's offset.
+ */
+export function imageFlashBytes(input: PreflightInput): number | undefined {
+  const head = input.imageHead;
+  // The ESP8266 codes the field differently, and espOS does not run on it.
+  if (head === undefined || input.buildTarget === "esp8266") return undefined;
+  const at =
+    (BOOTLOADER_FLASH_OFFSET[input.buildTarget] ?? 0) - input.writeAddress;
+  if (at < 0 || head[at] !== ESP_IMAGE_MAGIC) return undefined;
+  const code = (head[at + 3] ?? 0) >> 4;
+  const size = FLASH_SIZE_BY_CODE[code];
+  return size === undefined ? undefined : size * 1024 * 1024;
 }
 
 /**

@@ -239,11 +239,16 @@ export function likelyBoards(
   const found: LikelyBoard[] = [];
   for (const board of hardware) {
     if (print.target !== undefined && board.target !== print.target) continue;
+    // A board sold in several sizes lists them all; one that names only its
+    // own model's size is ruled out by any other.
+    const sizes =
+      board.flashSizes ??
+      (board.flashBytes === undefined ? [] : [board.flashBytes]);
     if (
       print.flashSizeDetected &&
       print.flashBytes !== undefined &&
-      board.flashBytes !== undefined &&
-      board.flashBytes !== print.flashBytes
+      sizes.length > 0 &&
+      !sizes.includes(print.flashBytes)
     ) {
       continue;
     }
