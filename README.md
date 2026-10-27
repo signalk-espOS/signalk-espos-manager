@@ -1,12 +1,14 @@
 # signalk-espos-manager
 
-Finds the [espOS](https://github.com/signalk-espOS/espOS) devices on your boat,
-keeps their firmware up to date from a project registry, and flashes a new
-board from the browser.
+A Signal K plugin for the ESP32 devices on your boat. It finds them, keeps
+their firmware up to date over the air, and puts firmware on a new board from
+the browser.
 
-> **Status: proven on hardware.** A new board has been flashed from the
-> browser and an installed device has been updated over the air with this
-> plugin.
+The devices run firmware built on [espOS](https://github.com/signalk-espOS/espOS),
+a firmware base for ESP32 boards that talk to Signal K. The firmware you can
+install comes from the [signalk-espOS registry](https://github.com/signalk-espOS/registry):
+a touch-screen instrument panel, an NMEA 2000 gateway, a Bluetooth gateway,
+relay switching, and whatever other developers add.
 
 ## What it does
 
@@ -17,8 +19,8 @@ board from the browser.
   internet and serves them locally, so an update works at anchor with no
   connection at all.
 - **Updates devices.** One at a time by default, watching progress and
-  confirming the new image only once the device comes back healthy — the
-  device rolls itself back otherwise.
+  confirming the new image only once the device comes back healthy. If it
+  doesn't, the device rolls itself back.
 - **A store of projects.** Firmware projects (the P4 cockpit, the BLE gateway,
   and anything other developers publish) with changelogs and per-board
   compatibility.
@@ -125,8 +127,8 @@ radio update runs, a firmware update waits for it to finish.
 
 A device fetches its update manifest from the Signal K server it is already
 connected to (`ota.manifest_src = signalk`), from this plugin's public webapp
-path — not from `/plugins/...`, which requires an administrator login that a
-device does not have. The plugin points each device at the right path for you.
+path. It can't use `/plugins/...`, because that needs an administrator login
+and a device has none. The plugin points each device at the right path for you.
 
 Firmware images are signed. A device only accepts an image signed with the key
 it was originally flashed with, so switching a device from one project to
@@ -177,21 +179,6 @@ registry and firmware from GitHub over HTTPS. Nothing about your boat is sent
 anywhere. With the mirror enabled, devices never contact the internet at all.
 Board photos are loaded by your browser from wherever the registry's catalogue
 points, and simply do not appear without internet.
-
-## Roadmap
-
-| Phase | What it adds                                       | State |
-| ----- | -------------------------------------------------- | ----- |
-| 0     | Device discovery and the fleet list                | done  |
-| 1     | Firmware mirror, manifests, and installing updates | done  |
-| 2     | The web interface                                  | done  |
-| 3     | The browser USB flasher for new boards             | done  |
-
-The firmware list comes from the
-[espOS registry](https://github.com/signalk-espOS/registry), and boards can be
-flashed from the [hosted flasher](https://signalk-espos.github.io/signalk-espos-manager/flash/)
-when your server is on plain http (browsers only allow USB access from a
-secure page).
 
 ## Licence
 
