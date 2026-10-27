@@ -19,8 +19,8 @@ relay switching, and whatever other developers add.
   internet and serves them locally, so an update works at anchor with no
   connection at all.
 - **Updates devices.** One at a time by default, watching progress and
-  confirming the new image only once the device comes back healthy. If it
-  doesn't, the device rolls itself back.
+  confirming the new image only once the device comes back healthy. An image
+  that is never confirmed is rolled back by the device's own timer.
 - **A store of projects.** Firmware projects (the P4 cockpit, the BLE gateway,
   and anything other developers publish) with changelogs and per-board
   compatibility.
