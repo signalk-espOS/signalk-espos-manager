@@ -285,6 +285,12 @@ export interface ManifestPlan {
  * chip. Target and channel come from the registry build the file was
  * downloaded from, matched by filename; an image the registry no longer
  * describes cannot be attributed to a board and is left out.
+ *
+ * `matchDevice()`'s sole-board rule, which gives a device that reports no
+ * board the labelled builds of its chip's only board, lives where a device's
+ * manifest is chosen (`manifestBoardId()`): such a device reads that board's
+ * manifest. Filling the app manifest with them instead would also offer them
+ * to a device naming a board nobody claims, which `matchDevice()` refuses.
  */
 export function planManifests(
   project: RegistryProject,

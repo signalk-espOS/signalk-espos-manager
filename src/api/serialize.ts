@@ -12,7 +12,7 @@ import { manifestPathFor } from "../mirror/manifest.js";
 import { needsOtaRepair } from "../ota/configure.js";
 import type { DeviceHardware } from "../registry/hardware.js";
 import type { HardwareBoard } from "../registry/types.js";
-import type { CoprocessorInfo, DeviceRecord } from "../types.js";
+import type { CoprocessorInfo, DeviceRecord, Target } from "../types.js";
 
 export interface DeviceDto {
   id: string;
@@ -70,12 +70,14 @@ function iso(value: number | undefined): string | undefined {
 }
 
 /**
- * The registry board id for a device's reported board when one resolves,
- * undefined when none does, and null when no index is held to decide with.
+ * The registry board id whose manifest a device reads, undefined for the
+ * application's manifest, and null when no index is held to decide with or
+ * the device's chip, which the answer depends on, is not known yet.
  */
 export type BoardIdFor = (
   app: string | undefined,
   reported: string | undefined,
+  target: Target | undefined,
 ) => string | undefined | null;
 
 /** The catalogue board and jobs for a device's app and reported board. */
@@ -157,7 +159,11 @@ function otaRepair(
   const app = record.snapshot?.app;
   const manifest = record.snapshot?.ota?.manifest;
   if (app === undefined || manifest === undefined) return {};
-  const boardId = boardIdFor?.(app, record.snapshot?.board);
+  const boardId = boardIdFor?.(
+    app,
+    record.snapshot?.board,
+    record.snapshot?.target,
+  );
   const cfg = record.snapshot?.otaConfig;
   const configuredPath = cfg?.manifestPath ?? pathOf(manifest.url);
   // Without an index the right board cannot be named. A device already on one

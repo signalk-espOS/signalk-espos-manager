@@ -77,7 +77,7 @@ export function registerRoutes(
           service.fleet.list(),
           service.fleet.getWarnings(),
           service.getKeys(),
-          (app, board) => service.boardIdFor(app, board),
+          (app, board, target) => service.boardIdFor(app, board, target),
           (app, board) => service.hardwareFor(app, board),
         ),
         fleetKey: service.fleetKeyStatus(),
@@ -99,7 +99,7 @@ export function registerRoutes(
         serializeDevice(
           device,
           service.getKeys(),
-          (app, board) => service.boardIdFor(app, board),
+          (app, board, target) => service.boardIdFor(app, board, target),
           (app, board) => service.hardwareFor(app, board),
         ),
       );
@@ -429,12 +429,9 @@ export function registerRoutes(
           // and right after a restart the index may not be held yet.
           const { index } = await service.getIndex();
           // Without the project its board cannot resolve, and the app
-          // manifest a multi-board project leaves nearly empty would quietly
-          // stop this device's updates.
-          if (
-            device.snapshot?.board !== undefined &&
-            projectForApp(index, app) === undefined
-          ) {
+          // manifest a multi-board or sole-board project leaves nearly empty
+          // would quietly stop this device's updates.
+          if (projectForApp(index, app) === undefined) {
             res.status(409).json({
               error:
                 `no registry project provides "${app}" — ` +
@@ -443,8 +440,24 @@ export function registerRoutes(
             return;
           }
           await service.manifestsSettled(app);
-          const boardId =
-            service.boardIdFor(app, device.snapshot?.board) ?? undefined;
+          const resolved = service.boardIdFor(
+            app,
+            device.snapshot?.board,
+            device.snapshot?.target,
+          );
+          // A device that names no board may read its chip's sole board's
+          // manifest, so until it reports the chip the path is a guess.
+          if (resolved === null) {
+            res.status(409).json({
+              error:
+                device.snapshot?.target === undefined
+                  ? "this device has not reported its chip yet — " +
+                    "wait for the next poll"
+                  : "the registry is not loaded yet — retry in a moment",
+            });
+            return;
+          }
+          const boardId = resolved ?? undefined;
           // A manifest whose write failed would leave the device fetching a
           // 404 on every check, with nothing on screen saying why.
           if (await service.manifestMissing(app, boardId)) {

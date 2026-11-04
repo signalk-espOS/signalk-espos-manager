@@ -113,6 +113,28 @@ describe("otaNeedsRepair", () => {
     expect(onBoardPath.otaNeedsRepair).toBe(false);
   });
 
+  it("flags a boardless device still on the app manifest of a sole-board app", () => {
+    // Issue #70: a BLE gateway on a P4-ETH reads manifest.json, which lists
+    // none of its builds. The target reaches boardIdFor so it can resolve.
+    const seen: unknown[] = [];
+    const boardIdFor = (
+      _app: string | undefined,
+      _board: string | undefined,
+      target: string | undefined,
+    ): string | undefined => {
+      seen.push(target);
+      return target === "esp32p4" ? "waveshare-p4-poe" : undefined;
+    };
+    const rec = record("", {
+      manifestSrc: "signalk",
+      manifestPath: "/signalk-espos-manager/fw/cockpit/manifest.json",
+    });
+    rec.snapshot!.target = "esp32p4";
+    const dto = serializeDevice(rec, undefined, boardIdFor);
+    expect(seen).toEqual(["esp32p4"]);
+    expect(dto.otaNeedsRepair).toBe(true);
+  });
+
   it("does not accuse a device on a board manifest before the index loads", () => {
     const dto = serializeDevice(
       record("", {
