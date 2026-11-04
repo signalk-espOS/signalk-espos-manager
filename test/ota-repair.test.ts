@@ -135,6 +135,21 @@ describe("otaNeedsRepair", () => {
     expect(dto.otaNeedsRepair).toBe(true);
   });
 
+  it("takes the chip from the OTA status when mDNS reported none", () => {
+    // A device added by address has no mDNS TXT target.
+    const seen: unknown[] = [];
+    const rec = record("", {
+      manifestSrc: "signalk",
+      manifestPath: "/signalk-espos-manager/fw/cockpit/manifest.json",
+    });
+    rec.snapshot!.ota!.running = { target: "esp32p4" };
+    serializeDevice(rec, undefined, (_app, _board, target) => {
+      seen.push(target);
+      return undefined;
+    });
+    expect(seen).toEqual(["esp32p4"]);
+  });
+
   it("does not accuse a device on a board manifest before the index loads", () => {
     const dto = serializeDevice(
       record("", {

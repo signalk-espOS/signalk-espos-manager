@@ -86,6 +86,14 @@ export type HardwareFor = (
   reported: string | undefined,
 ) => DeviceHardware;
 
+/**
+ * The device's chip: from mDNS, or from its OTA status where mDNS gave none,
+ * as for a device added by address.
+ */
+export function deviceTarget(record: DeviceRecord): Target | undefined {
+  return record.snapshot?.target ?? record.snapshot?.ota?.running?.target;
+}
+
 export function serializeDevice(
   record: DeviceRecord,
   keys?: KeyStore,
@@ -114,7 +122,7 @@ export function serializeDevice(
     version: snapshot?.version,
     // Only mDNS reports this; /system/info does not carry it.
     esposVersion: snapshot?.esposVersion,
-    target: snapshot?.target ?? snapshot?.ota?.running?.target,
+    target: deviceTarget(record),
     board,
     hardware: hardware?.board,
     useCases:
@@ -162,7 +170,7 @@ function otaRepair(
   const boardId = boardIdFor?.(
     app,
     record.snapshot?.board,
-    record.snapshot?.target,
+    deviceTarget(record),
   );
   const cfg = record.snapshot?.otaConfig;
   const configuredPath = cfg?.manifestPath ?? pathOf(manifest.url);

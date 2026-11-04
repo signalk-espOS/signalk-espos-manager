@@ -16,7 +16,7 @@ import { summariseReleaseNotes } from "../mirror/manifest.js";
 import { DeviceClient } from "../device/client.js";
 import { generateFleetKey } from "../device/fleetKey.js";
 import { fleetKeyUsable } from "../device/provision.js";
-import { serializeDevice, serializeFleet } from "./serialize.js";
+import { deviceTarget, serializeDevice, serializeFleet } from "./serialize.js";
 
 interface ResponseLike {
   status(code: number): ResponseLike;
@@ -443,14 +443,14 @@ export function registerRoutes(
           const resolved = service.boardIdFor(
             app,
             device.snapshot?.board,
-            device.snapshot?.target,
+            deviceTarget(device),
           );
           // A device that names no board may read its chip's sole board's
           // manifest, so until it reports the chip the path is a guess.
           if (resolved === null) {
             res.status(409).json({
               error:
-                device.snapshot?.target === undefined
+                deviceTarget(device) === undefined
                   ? "this device has not reported its chip yet — " +
                     "wait for the next poll"
                   : "the registry is not loaded yet — retry in a moment",
