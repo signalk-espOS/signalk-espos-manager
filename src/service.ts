@@ -10,7 +10,7 @@ import type { ManagerSettings } from "./config.js";
 import { PLUGIN_ID, PUBLIC_FW_BASE } from "./config.js";
 import { KeyStore } from "./device/auth.js";
 import { FleetPoller } from "./fleet/poller.js";
-import { FleetState, snapshotTarget } from "./fleet/state.js";
+import { boardSettled, FleetState, snapshotTarget } from "./fleet/state.js";
 import { publishFleetDeltas } from "./fleet/deltas.js";
 import { DayNightPublisher } from "./sky/dayNight.js";
 import { FirmwareStore } from "./mirror/store.js";
@@ -592,6 +592,7 @@ export class ManagerService {
       app: snapshot.app,
       target: snapshotTarget(snapshot),
       board: snapshot.board,
+      boardRead: boardSettled(snapshot),
       runningVersion: snapshot.version,
       channel: settings.ota.channel,
       keyFp: snapshot.ota?.running?.keyFp,
@@ -977,13 +978,14 @@ export class ManagerService {
     app: string | undefined,
     reported: string | undefined,
     target: Target | undefined,
+    boardRead = true,
   ): string | undefined | null {
     if (app === undefined) return undefined;
     const index = this.registryState?.index;
     if (index === undefined) return null;
     const project = projectForApp(index, app);
     if (project === undefined) return null;
-    return manifestBoardId(project.boards, target, reported);
+    return manifestBoardId(project.boards, target, reported, boardRead);
   }
 
   /**

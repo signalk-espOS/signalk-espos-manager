@@ -447,6 +447,14 @@ describe("matchDevice", () => {
       matchDevice(labelled, { ...base, runningVersion: "1.1.0" }).build
         ?.version,
     ).toBe("1.2.0");
+    // Not while the board could not be read: it may be one nobody claims.
+    expect(
+      matchDevice(labelled, {
+        ...base,
+        runningVersion: "1.1.0",
+        boardRead: false,
+      }).build,
+    ).toBeUndefined();
   });
 
   it("withholds the only board's labelled build from an unrecognised board report", () => {
@@ -893,6 +901,16 @@ describe("manifestBoardId", () => {
     expect(manifestBoardId(gateway, "esp32s3", undefined)).toBeUndefined();
     expect(manifestBoardId(undefined, "esp32p4", undefined)).toBeUndefined();
     expect(manifestBoardId([], undefined, undefined)).toBeUndefined();
+  });
+
+  it("waits while the board could not be read", () => {
+    // A failed info read is no evidence of "no board": the device may name
+    // one nobody claims, which must not get the sole board's images.
+    expect(manifestBoardId(gateway, "esp32p4", undefined, false)).toBeNull();
+    // Where no sole board exists the answer is the app manifest either way.
+    expect(
+      manifestBoardId(panels, "esp32p4", undefined, false),
+    ).toBeUndefined();
   });
 
   it("cannot say for a boardless device whose chip is unknown", () => {

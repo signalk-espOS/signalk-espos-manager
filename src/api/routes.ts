@@ -16,6 +16,7 @@ import { summariseReleaseNotes } from "../mirror/manifest.js";
 import { DeviceClient } from "../device/client.js";
 import { generateFleetKey } from "../device/fleetKey.js";
 import { fleetKeyUsable } from "../device/provision.js";
+import { boardSettled } from "../fleet/state.js";
 import { deviceTarget, serializeDevice, serializeFleet } from "./serialize.js";
 
 interface ResponseLike {
@@ -77,7 +78,8 @@ export function registerRoutes(
           service.fleet.list(),
           service.fleet.getWarnings(),
           service.getKeys(),
-          (app, board, target) => service.boardIdFor(app, board, target),
+          (app, board, target, boardRead) =>
+            service.boardIdFor(app, board, target, boardRead),
           (app, board) => service.hardwareFor(app, board),
         ),
         fleetKey: service.fleetKeyStatus(),
@@ -99,7 +101,8 @@ export function registerRoutes(
         serializeDevice(
           device,
           service.getKeys(),
-          (app, board, target) => service.boardIdFor(app, board, target),
+          (app, board, target, boardRead) =>
+            service.boardIdFor(app, board, target, boardRead),
           (app, board) => service.hardwareFor(app, board),
         ),
       );
@@ -358,6 +361,7 @@ export function registerRoutes(
             app,
             target: deviceTarget(device),
             board: device.snapshot?.board,
+            boardRead: boardSettled(device.snapshot),
             runningVersion: device.snapshot?.version ?? "",
             channel: settings?.ota.channel ?? "stable",
             keyFp: device.snapshot?.ota?.running?.keyFp,
@@ -444,6 +448,7 @@ export function registerRoutes(
             app,
             device.snapshot?.board,
             deviceTarget(device),
+            boardSettled(device.snapshot),
           );
           // A device that names no board may read its chip's sole board's
           // manifest, so until it reports the chip the path is a guess.
@@ -453,7 +458,10 @@ export function registerRoutes(
                 deviceTarget(device) === undefined
                   ? "this device has not reported its chip yet — " +
                     "wait for the next poll"
-                  : "the registry is not loaded yet — retry in a moment",
+                  : !boardSettled(device.snapshot)
+                    ? "this device's board could not be read yet — " +
+                      "wait for the next poll"
+                    : "the registry is not loaded yet — retry in a moment",
             });
             return;
           }

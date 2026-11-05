@@ -158,6 +158,15 @@ export class FleetState {
   ): void {
     const record = this.devices.get(id);
     if (record === undefined) return;
+    // A probe whose info read failed says nothing about the board, so a board
+    // an earlier probe read is kept rather than lost to a transient error.
+    if (
+      snapshot.info === undefined &&
+      snapshot.board === undefined &&
+      record.snapshot?.board !== undefined
+    ) {
+      snapshot.board = record.snapshot.board;
+    }
     record.snapshot = snapshot;
     record.auth = auth;
     record.lastOkProbeAt = now;
@@ -259,4 +268,16 @@ export function snapshotTarget(
   snapshot: DeviceSnapshot | undefined,
 ): Target | undefined {
   return snapshot?.target ?? snapshot?.ota?.running?.target;
+}
+
+/**
+ * Whether a device's board is known, as a board or as "none": it reported
+ * one, or its system info was read and named none. Until then the sole-board
+ * rule must not apply, because the device may have a board nobody claims.
+ */
+export function boardSettled(snapshot: DeviceSnapshot | undefined): boolean {
+  const board = snapshot?.board;
+  return (
+    (board !== undefined && board.trim() !== "") || snapshot?.info !== undefined
+  );
 }

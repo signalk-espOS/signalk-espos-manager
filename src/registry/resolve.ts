@@ -100,11 +100,17 @@ export function manifestBoardId(
   boards: readonly RegistryBoard[] | undefined,
   target: Target | undefined,
   reported: string | undefined,
+  boardRead = true,
 ): string | undefined | null {
   if (reported !== undefined && reported.trim() !== "") {
     return boardIdFromReport(boards, reported);
   }
-  if (target !== undefined) return soleBoardOn(boards, target);
+  if (target !== undefined) {
+    const sole = soleBoardOn(boards, target);
+    if (sole === undefined) return undefined;
+    // No board without a successful read may still be a board nobody claims.
+    return boardRead ? sole : null;
+  }
   const chips = new Set((boards ?? []).map((board) => board.target));
   const someSole = [...chips].some(
     (chip) => soleBoardOn(boards, chip) !== undefined,
@@ -130,6 +136,12 @@ export interface MatchDeviceOptions {
   /** The key fingerprint the device trusts, when the firmware reports one. */
   keyFp?: string;
   includePrerelease?: boolean;
+  /**
+   * False while the device's board is unknown because its info could not be
+   * read: the sole-board rule then waits, as the board may be one nobody
+   * claims. Defaults to true.
+   */
+  boardRead?: boolean;
 }
 
 export interface MatchResult {
@@ -262,7 +274,7 @@ export function matchDevice(
       options.target,
       boardId,
       boardsOnTarget,
-      soleBoardId,
+      options.boardRead === false ? undefined : soleBoardId,
       options.board !== undefined && options.board.trim() !== "",
     );
     if (build === undefined) continue;

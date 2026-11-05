@@ -8,7 +8,7 @@
 import type { KeyStore } from "../device/auth.js";
 import { PUBLIC_FW_BASE } from "../config.js";
 import { isProvisionalId } from "../fleet/poller.js";
-import { snapshotTarget } from "../fleet/state.js";
+import { boardSettled, snapshotTarget } from "../fleet/state.js";
 import { manifestPathFor } from "../mirror/manifest.js";
 import { needsOtaRepair } from "../ota/configure.js";
 import type { DeviceHardware } from "../registry/hardware.js";
@@ -79,6 +79,7 @@ export type BoardIdFor = (
   app: string | undefined,
   reported: string | undefined,
   target: Target | undefined,
+  boardRead: boolean,
 ) => string | undefined | null;
 
 /** The catalogue board and jobs for a device's app and reported board. */
@@ -172,6 +173,7 @@ function otaRepair(
     app,
     record.snapshot?.board,
     deviceTarget(record),
+    boardSettled(record.snapshot),
   );
   const cfg = record.snapshot?.otaConfig;
   const configuredPath = cfg?.manifestPath ?? pathOf(manifest.url);

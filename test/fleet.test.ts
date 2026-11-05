@@ -13,6 +13,7 @@
 
 import { describe, expect, it } from "vitest";
 import {
+  boardSettled,
   deriveReachability,
   FleetState,
   shouldForget,
@@ -170,6 +171,37 @@ describe("FleetState", () => {
     expect(record?.snapshot?.version).toBe("1.2.0");
     expect(record?.consecutiveFailures).toBe(1);
     expect(record?.lastError).toMatch(/ECONNREFUSED/);
+  });
+
+  it("keeps a board read earlier when a probe cannot read info", () => {
+    // A device without a board after a failed info read could otherwise fall
+    // under the sole-board rule and be offered images for other hardware.
+    const fleet = new FleetState();
+    fleet.applyIdentities(new Map([["2be9", identity("2be9")]]), NOW);
+    fleet.recordSuccess(
+      "2be9",
+      {
+        ...snapshot(),
+        board: "Unclaimed Board",
+        info: { chip: "esp32p4" } as DeviceSnapshot["info"],
+      },
+      "open",
+      NOW,
+    );
+    fleet.recordSuccess("2be9", snapshot(), "open", NOW + 1);
+    expect(fleet.get("2be9")?.snapshot?.board).toBe("Unclaimed Board");
+  });
+
+  it("knows the board only once it is reported or info was read", () => {
+    expect(boardSettled(snapshot())).toBe(false);
+    expect(boardSettled({ ...snapshot(), board: "  " })).toBe(false);
+    expect(boardSettled({ ...snapshot(), board: "X" })).toBe(true);
+    expect(
+      boardSettled({
+        ...snapshot(),
+        info: { chip: "esp32p4" } as DeviceSnapshot["info"],
+      }),
+    ).toBe(true);
   });
 
   it("clears the repair warning as soon as the device is configured", () => {
