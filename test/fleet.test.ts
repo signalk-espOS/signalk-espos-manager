@@ -215,7 +215,7 @@ describe("FleetState", () => {
     }
   });
 
-  it("takes the chip from OTA status before a retained mDNS record", () => {
+  it("takes the chip from a live read before a retained mDNS record", () => {
     const ota = (target: string) =>
       ({ running: { target } }) as unknown as DeviceSnapshot["ota"];
     expect(snapshotTarget(undefined)).toBeUndefined();
@@ -227,6 +227,21 @@ describe("FleetState", () => {
     ).toBe("esp32c5");
     expect(
       snapshotTarget({ ...snapshot(), target: "esp32c6", ota: ota("esp32c5") }),
+    ).toBe("esp32c5");
+    const info = {
+      app: "ble-gateway",
+      chip: "esp32p4",
+    } as DeviceSnapshot["info"];
+    expect(snapshotTarget({ ...snapshot(), target: "esp32c6", info })).toBe(
+      "esp32p4",
+    );
+    expect(
+      snapshotTarget({
+        ...snapshot(),
+        target: "esp32c6",
+        info,
+        ota: ota("esp32c5"),
+      }),
     ).toBe("esp32c5");
   });
 

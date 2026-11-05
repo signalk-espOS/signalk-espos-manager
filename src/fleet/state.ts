@@ -252,14 +252,16 @@ export class FleetState {
 }
 
 /**
- * A device's chip. The OTA status comes first: it is read on every probe,
- * while an mDNS record can outlive the device that announced it. mDNS fills
- * in when OTA status is unavailable.
+ * A device's chip. What this probe read comes first, OTA status then system
+ * info, because an mDNS record can outlive the device that announced it.
+ * mDNS fills in only when neither live read named the chip.
  */
 export function snapshotTarget(
   snapshot: DeviceSnapshot | undefined,
 ): Target | undefined {
-  return snapshot?.ota?.running?.target ?? snapshot?.target;
+  return (
+    snapshot?.ota?.running?.target ?? snapshot?.info?.chip ?? snapshot?.target
+  );
 }
 
 /**
