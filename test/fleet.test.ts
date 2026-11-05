@@ -173,9 +173,9 @@ describe("FleetState", () => {
     expect(record?.lastError).toMatch(/ECONNREFUSED/);
   });
 
-  it("keeps a board read earlier when a probe cannot read info", () => {
-    // A device without a board after a failed info read could otherwise fall
-    // under the sole-board rule and be offered images for other hardware.
+  it("does not carry a board across a probe that read no info", () => {
+    // The address may now answer for a different device. Without info the
+    // board stays unknown, and boardSettled() keeps the sole-board rule off.
     const fleet = new FleetState();
     fleet.applyIdentities(new Map([["2be9", identity("2be9")]]), NOW);
     fleet.recordSuccess(
@@ -189,7 +189,9 @@ describe("FleetState", () => {
       NOW,
     );
     fleet.recordSuccess("2be9", snapshot(), "open", NOW + 1);
-    expect(fleet.get("2be9")?.snapshot?.board).toBe("Unclaimed Board");
+    const after = fleet.get("2be9")?.snapshot;
+    expect(after?.board).toBeUndefined();
+    expect(boardSettled(after)).toBe(false);
   });
 
   it("knows the board only once it is reported or info was read", () => {

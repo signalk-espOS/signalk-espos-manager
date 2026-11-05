@@ -158,15 +158,6 @@ export class FleetState {
   ): void {
     const record = this.devices.get(id);
     if (record === undefined) return;
-    // A probe whose info read failed says nothing about the board, so a board
-    // an earlier probe read is kept rather than lost to a transient error.
-    if (
-      snapshot.info === undefined &&
-      snapshot.board === undefined &&
-      record.snapshot?.board !== undefined
-    ) {
-      snapshot.board = record.snapshot.board;
-    }
     record.snapshot = snapshot;
     record.auth = auth;
     record.lastOkProbeAt = now;
