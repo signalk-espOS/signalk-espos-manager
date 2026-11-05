@@ -10,7 +10,7 @@ import type { ManagerSettings } from "./config.js";
 import { PLUGIN_ID, PUBLIC_FW_BASE } from "./config.js";
 import { KeyStore } from "./device/auth.js";
 import { FleetPoller } from "./fleet/poller.js";
-import { FleetState } from "./fleet/state.js";
+import { FleetState, snapshotTarget } from "./fleet/state.js";
 import { publishFleetDeltas } from "./fleet/deltas.js";
 import { DayNightPublisher } from "./sky/dayNight.js";
 import { FirmwareStore } from "./mirror/store.js";
@@ -590,7 +590,7 @@ export class ManagerService {
     }
     const match = matchDevice(project, {
       app: snapshot.app,
-      target: snapshot.target,
+      target: snapshotTarget(snapshot),
       board: snapshot.board,
       runningVersion: snapshot.version,
       channel: settings.ota.channel,

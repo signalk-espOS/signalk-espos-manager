@@ -356,7 +356,7 @@ export function registerRoutes(
           const settings = service.getSettings();
           const match = matchDevice(project, {
             app,
-            target: device.snapshot?.target,
+            target: deviceTarget(device),
             board: device.snapshot?.board,
             runningVersion: device.snapshot?.version ?? "",
             channel: settings?.ota.channel ?? "stable",

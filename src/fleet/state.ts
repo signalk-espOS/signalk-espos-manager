@@ -14,6 +14,7 @@ import type {
   DeviceRecord,
   DeviceSnapshot,
   Reachability,
+  Target,
 } from "../types.js";
 
 export interface ReachabilityWindows {
@@ -248,4 +249,14 @@ export class FleetState {
     if (needKey > 0) parts.push(`${needKey} need a key`);
     return parts.join(", ");
   }
+}
+
+/**
+ * A device's chip: from mDNS, or from its OTA status where mDNS gave none,
+ * as for a device added by address.
+ */
+export function snapshotTarget(
+  snapshot: DeviceSnapshot | undefined,
+): Target | undefined {
+  return snapshot?.target ?? snapshot?.ota?.running?.target;
 }

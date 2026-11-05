@@ -134,6 +134,10 @@ export async function probeDevice(options: ProbeOptions): Promise<ProbeResult> {
       // this call is the authorization probe -- a 401 or 429 has to reach the
       // catch below so the key store can record a refusal or a lockout.
       snapshot.info = await authed.systemInfo();
+      // Promoted here as well: if enrich()'s own read then fails, a board
+      // left only in `info` would read as "no board" and could resolve to a
+      // sole board's images meant for other hardware.
+      promoteBoard(snapshot);
       // enrich(), not a second copy of the same fetches: it also promotes
       // hardware.board onto the snapshot and reads the ota config, and a
       // key-protected device silently missing both is exactly the divergence
@@ -180,6 +184,14 @@ export async function probeDevice(options: ProbeOptions): Promise<ProbeResult> {
   return { ok: false, auth: "unknown", error: lastError };
 }
 
+/** The firmware's own board report, preferred over the mDNS hint. */
+function promoteBoard(snapshot: DeviceSnapshot): void {
+  const reported = snapshot.info?.hardware?.board;
+  if (reported !== undefined && reported !== "") {
+    snapshot.board = reported;
+  }
+}
+
 /** Best-effort extras; a failure here must not fail the probe. */
 async function enrich(
   snapshot: DeviceSnapshot,
@@ -197,10 +209,7 @@ async function enrich(
     // record does not carry a board at all today (v/app/espos/target/id/api/
     // auth only), so the hint is a fallback for a future firmware that adds
     // one, and for a device whose info we cannot read.
-    const reported = snapshot.info.hardware?.board;
-    if (reported !== undefined && reported !== "") {
-      snapshot.board = reported;
-    }
+    promoteBoard(snapshot);
   } catch {
     // Older or busy firmware; ping already told us it is alive.
   }

@@ -8,6 +8,7 @@
 import type { KeyStore } from "../device/auth.js";
 import { PUBLIC_FW_BASE } from "../config.js";
 import { isProvisionalId } from "../fleet/poller.js";
+import { snapshotTarget } from "../fleet/state.js";
 import { manifestPathFor } from "../mirror/manifest.js";
 import { needsOtaRepair } from "../ota/configure.js";
 import type { DeviceHardware } from "../registry/hardware.js";
@@ -91,7 +92,7 @@ export type HardwareFor = (
  * as for a device added by address.
  */
 export function deviceTarget(record: DeviceRecord): Target | undefined {
-  return record.snapshot?.target ?? record.snapshot?.ota?.running?.target;
+  return snapshotTarget(record.snapshot);
 }
 
 export function serializeDevice(
