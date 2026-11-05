@@ -268,12 +268,18 @@ export function snapshotTarget(
  * Whether a device's board is known, as a board or as "none": it reported
  * one, or a complete system info response named none. Until then the
  * sole-board rule must not apply, because the device may have a board nobody
- * claims. An info body without app and chip is not an espOS answer, so its
- * missing board says nothing.
+ * claims. An info body without app and chip is not an espOS answer, and one
+ * without the hardware block comes from firmware older than espOS 0.10.0,
+ * which cannot report a board at all, so neither one's missing board says
+ * anything. espOS 0.10.0+ always sends the block, with or without a board.
  */
 export function boardSettled(snapshot: DeviceSnapshot | undefined): boolean {
   const board = snapshot?.board;
   if (board !== undefined && board.trim() !== "") return true;
   const info = snapshot?.info;
-  return info?.app !== undefined && info.chip !== undefined;
+  return (
+    info?.app !== undefined &&
+    info.chip !== undefined &&
+    info.hardware !== undefined
+  );
 }

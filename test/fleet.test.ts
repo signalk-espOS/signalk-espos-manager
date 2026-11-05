@@ -202,13 +202,23 @@ describe("FleetState", () => {
     expect(
       boardSettled({
         ...snapshot(),
-        info: { app: "ble-gateway", chip: "esp32c6" } as DeviceSnapshot["info"],
+        info: {
+          app: "ble-gateway",
+          chip: "esp32c6",
+          hardware: { cpuMhz: 160 },
+        } as DeviceSnapshot["info"],
       }),
     ).toBe(true);
   });
 
-  it("does not settle the board on an incomplete info body", () => {
-    for (const info of [{}, { chip: "esp32c6" }, { app: "ble-gateway" }]) {
+  it("does not settle the board on an incomplete or legacy info body", () => {
+    for (const info of [
+      {},
+      { chip: "esp32c6" },
+      { app: "ble-gateway" },
+      // espOS before 0.10.0: no hardware block, so no way to report a board
+      { app: "ble-gateway", chip: "esp32c6" },
+    ]) {
       expect(
         boardSettled({ ...snapshot(), info: info as DeviceSnapshot["info"] }),
       ).toBe(false);
