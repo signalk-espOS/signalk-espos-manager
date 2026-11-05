@@ -146,16 +146,54 @@ describe("DayNightPublisher", () => {
     expect(handleMessage).not.toHaveBeenCalled();
   });
 
-  it("stops republishing once stopped", () => {
+  it("publishes only when the mode changes", () => {
+    // A day/night switch made by hand must hold until sunrise or sunset.
+    const { app, handleMessage } = fakeApp({ value: equator });
+    let now = new Date("2024-06-21T12:00:00Z");
+    const publisher = new DayNightPublisher(
+      app,
+      "signalk-espos-manager",
+      () => now,
+    );
+    publisher.publish();
+    now = new Date("2024-06-21T12:01:00Z");
+    publisher.publish();
+    expect(handleMessage).toHaveBeenCalledTimes(1);
+    now = new Date("2024-06-21T20:00:00Z");
+    publisher.publish();
+    expect(handleMessage).toHaveBeenCalledTimes(2);
+    expect(handleMessage).toHaveBeenLastCalledWith("signalk-espos-manager", {
+      updates: [{ values: [{ path: "environment.mode", value: "night" }] }],
+    });
+  });
+
+  it("publishes the mode again after a restart", () => {
+    const { app, handleMessage } = fakeApp({ value: equator });
+    const publisher = new DayNightPublisher(
+      app,
+      "signalk-espos-manager",
+      () => new Date("2024-06-21T12:00:00Z"),
+    );
+    publisher.start();
+    publisher.stop();
+    publisher.start();
+    publisher.stop();
+    expect(handleMessage).toHaveBeenCalledTimes(2);
+  });
+
+  it("stops checking once stopped", () => {
     vi.useFakeTimers();
     try {
+      vi.setSystemTime(new Date("2024-06-21T17:00:00Z"));
       const { app, handleMessage } = fakeApp({ value: equator });
       const publisher = new DayNightPublisher(app, "signalk-espos-manager");
       publisher.start();
-      vi.advanceTimersByTime(60_000);
+      expect(handleMessage).toHaveBeenCalledTimes(1);
+      // Sunset at 0,0 is about 18:07Z; the timer catches it within a minute.
+      vi.advanceTimersByTime(90 * 60_000);
       expect(handleMessage).toHaveBeenCalledTimes(2);
       publisher.stop();
-      vi.advanceTimersByTime(180_000);
+      vi.advanceTimersByTime(12 * 60 * 60_000);
       expect(handleMessage).toHaveBeenCalledTimes(2);
     } finally {
       vi.useRealTimers();

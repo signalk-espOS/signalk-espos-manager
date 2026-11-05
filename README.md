@@ -165,7 +165,9 @@ espOS touch panels dim their backlight only at night, and learn that from
 which computes the Sun's position offline. It is `day` while any part of the
 Sun is above the horizon, from sunrise to sunset, and `night` otherwise, which
 also covers the midnight sun and the polar night. Until the server has a
-position nothing is published, and the panels stay bright.
+position nothing is published, and the panels stay bright. The mode is
+published only when it changes, so a day/night switch made by hand, such as
+App Dock's button, holds until the next sunrise or sunset.
 
 signalk-derived-data is not needed for this. If it is installed with its Sun
 calculation on, it publishes `environment.mode` too, switching to night a few

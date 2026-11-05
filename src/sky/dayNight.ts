@@ -59,6 +59,7 @@ export function readPosition(entry: unknown): Position | undefined {
 
 export class DayNightPublisher {
   private timer?: NodeJS.Timeout;
+  private published?: DayNightMode;
 
   constructor(
     private readonly app: ServerAPI,
@@ -68,6 +69,7 @@ export class DayNightPublisher {
 
   start(): void {
     this.stop();
+    this.published = undefined;
     this.publish();
     this.timer = setInterval(() => {
       this.publish();
@@ -81,8 +83,11 @@ export class DayNightPublisher {
   }
 
   /**
-   * Republished every minute, not only on a change: a panel that connects
-   * later gets a fresh value, and the mode follows a moving boat.
+   * Worked out every minute, so the mode follows a moving boat, but published
+   * only when it changes: environment.mode is also switched by hand (App
+   * Dock's day/night button), and restating it would undo that switch within
+   * a minute. A manual switch holds until the next sunrise or sunset. A panel
+   * that connects later gets the last value from the server.
    */
   publish(): void {
     // Runs from a timer: anything thrown here would be an uncaught
@@ -104,10 +109,12 @@ export class DayNightPublisher {
     // Almanac covers 1950 to 2100 and throws outside it, which only a badly
     // wrong system clock reaches; publish() logs that and publishes nothing.
     const mode = dayNight(this.now(), position);
+    if (mode === this.published) return;
     this.app.handleMessage(this.pluginId, {
       updates: [
         { values: [{ path: "environment.mode" as Path, value: mode }] },
       ],
     });
+    this.published = mode;
   }
 }
