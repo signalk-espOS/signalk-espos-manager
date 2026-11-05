@@ -252,23 +252,26 @@ export class FleetState {
 }
 
 /**
- * A device's chip: from mDNS, or from its OTA status where mDNS gave none,
- * as for a device added by address.
+ * A device's chip. The OTA status comes first: it is read on every probe,
+ * while an mDNS record can outlive the device that announced it. mDNS fills
+ * in when OTA status is unavailable.
  */
 export function snapshotTarget(
   snapshot: DeviceSnapshot | undefined,
 ): Target | undefined {
-  return snapshot?.target ?? snapshot?.ota?.running?.target;
+  return snapshot?.ota?.running?.target ?? snapshot?.target;
 }
 
 /**
  * Whether a device's board is known, as a board or as "none": it reported
- * one, or its system info was read and named none. Until then the sole-board
- * rule must not apply, because the device may have a board nobody claims.
+ * one, or a complete system info response named none. Until then the
+ * sole-board rule must not apply, because the device may have a board nobody
+ * claims. An info body without app and chip is not an espOS answer, so its
+ * missing board says nothing.
  */
 export function boardSettled(snapshot: DeviceSnapshot | undefined): boolean {
   const board = snapshot?.board;
-  return (
-    (board !== undefined && board.trim() !== "") || snapshot?.info !== undefined
-  );
+  if (board !== undefined && board.trim() !== "") return true;
+  const info = snapshot?.info;
+  return info?.app !== undefined && info.chip !== undefined;
 }

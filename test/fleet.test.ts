@@ -14,6 +14,7 @@
 import { describe, expect, it } from "vitest";
 import {
   boardSettled,
+  snapshotTarget,
   deriveReachability,
   FleetState,
   shouldForget,
@@ -201,9 +202,32 @@ describe("FleetState", () => {
     expect(
       boardSettled({
         ...snapshot(),
-        info: { chip: "esp32p4" } as DeviceSnapshot["info"],
+        info: { app: "ble-gateway", chip: "esp32c6" } as DeviceSnapshot["info"],
       }),
     ).toBe(true);
+  });
+
+  it("does not settle the board on an incomplete info body", () => {
+    for (const info of [{}, { chip: "esp32c6" }, { app: "ble-gateway" }]) {
+      expect(
+        boardSettled({ ...snapshot(), info: info as DeviceSnapshot["info"] }),
+      ).toBe(false);
+    }
+  });
+
+  it("takes the chip from OTA status before a retained mDNS record", () => {
+    const ota = (target: string) =>
+      ({ running: { target } }) as unknown as DeviceSnapshot["ota"];
+    expect(snapshotTarget(undefined)).toBeUndefined();
+    expect(snapshotTarget({ ...snapshot(), target: "esp32c6" })).toBe(
+      "esp32c6",
+    );
+    expect(
+      snapshotTarget({ ...snapshot(), target: undefined, ota: ota("esp32c5") }),
+    ).toBe("esp32c5");
+    expect(
+      snapshotTarget({ ...snapshot(), target: "esp32c6", ota: ota("esp32c5") }),
+    ).toBe("esp32c5");
   });
 
   it("clears the repair warning as soon as the device is configured", () => {
