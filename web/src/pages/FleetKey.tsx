@@ -37,6 +37,8 @@ export function FleetKeyCard() {
   const [editing, setEditing] = useState(false);
   const [generated, setGenerated] = useState<string | undefined>();
   const [outcome, setOutcome] = useState<string | undefined>();
+  // Asked in the page: kiosk browsers on a plotter may block window.confirm().
+  const [confirmRemove, setConfirmRemove] = useState(false);
 
   const status = fleet?.fleetKey;
   if (status === undefined) return null;
@@ -50,6 +52,7 @@ export function FleetKeyCard() {
     act(
       what,
       async () => {
+        setConfirmRemove(false);
         setGenerated(undefined);
         setOutcome(undefined);
         const change = await fn();
@@ -99,32 +102,48 @@ export function FleetKeyCard() {
         >
           {status.set ? "Generate a new key" : "Generate a key"}
         </button>
-        <button disabled={busy} onClick={() => setEditing(!editing)}>
+        <button
+          disabled={busy}
+          onClick={() => {
+            setConfirmRemove(false);
+            setEditing(!editing);
+          }}
+        >
           Use my own key
         </button>
-        {status.set && (
-          <button
-            disabled={busy}
-            onClick={() => {
-              if (
-                !window.confirm(
-                  "Stop using the fleet key? Devices that use it keep it as " +
-                    "their own key, so none is left unprotected.",
-                )
-              ) {
-                return;
-              }
-              void run(
-                "Remove the fleet key",
-                () => api.removeFleetKey(),
-                true,
-              );
-            }}
-          >
+        {status.set && !confirmRemove && (
+          <button disabled={busy} onClick={() => setConfirmRemove(true)}>
             Remove
           </button>
         )}
       </div>
+
+      {status.set && confirmRemove && (
+        <div class="card notice">
+          <p>
+            Stop using the fleet key? Devices that use it keep it as their own
+            key, so none is left unprotected.
+          </p>
+          <div class="button-row">
+            <button
+              disabled={busy}
+              onClick={() => {
+                setConfirmRemove(false);
+                void run(
+                  "Remove the fleet key",
+                  () => api.removeFleetKey(),
+                  true,
+                );
+              }}
+            >
+              Remove the fleet key
+            </button>
+            <button disabled={busy} onClick={() => setConfirmRemove(false)}>
+              Keep it
+            </button>
+          </div>
+        </div>
+      )}
 
       {editing && (
         <div class="button-row">
