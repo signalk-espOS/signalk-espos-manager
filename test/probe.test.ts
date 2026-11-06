@@ -117,6 +117,23 @@ describe("probeDevice against a keyed device", () => {
     expect(result.snapshot?.info?.cores).toBe(2);
   });
 
+  it("keeps the reported board when the second info read fails", async () => {
+    // Throttled after the authorization probe: enrich()'s own read fails, and
+    // a board left only in `info` would look like no board at all.
+    device = await startFakeDevice({
+      key: "secret-key",
+      throttleAfter: 1,
+      info: { hardware: { board: "Waveshare ESP32-P4-WIFI6-Touch-LCD-7B" } },
+    });
+    const keys = await freshKeys();
+    keys.setFleetKey("secret-key");
+
+    const result = await probeDevice({ identity: identityFor(device), keys });
+    expect(result.snapshot?.board).toBe(
+      "Waveshare ESP32-P4-WIFI6-Touch-LCD-7B",
+    );
+  });
+
   it("prefers a device's own key over the fleet key", async () => {
     device = await startFakeDevice({ key: "device-specific" });
     const keys = await freshKeys();

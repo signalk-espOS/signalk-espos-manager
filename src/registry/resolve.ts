@@ -84,6 +84,49 @@ export function boardIdFromReport(
   return hits.length === 1 ? hits[0]?.id : undefined;
 }
 
+/**
+ * The board whose manifest a device reads on its own: undefined for the
+ * application's manifest, null when its chip is not known yet and the answer
+ * depends on it.
+ *
+ * Follows `matchDevice()`'s sole-board rule. A device that reports no board,
+ * on a chip for which the project declares exactly one, is that board: its
+ * labelled builds are in that board's manifest only, and the application's
+ * manifest leaves them out. A device that reports a board nobody claims keeps
+ * the application's manifest, which offers it only board-agnostic builds, as
+ * `matchDevice()` does.
+ */
+export function manifestBoardId(
+  boards: readonly RegistryBoard[] | undefined,
+  target: Target | undefined,
+  reported: string | undefined,
+  boardRead = true,
+): string | undefined | null {
+  if (reported !== undefined && reported.trim() !== "") {
+    return boardIdFromReport(boards, reported);
+  }
+  if (target !== undefined) {
+    const sole = soleBoardOn(boards, target);
+    if (sole === undefined) return undefined;
+    // No board without a successful read may still be a board nobody claims.
+    return boardRead ? sole : null;
+  }
+  const chips = new Set((boards ?? []).map((board) => board.target));
+  const someSole = [...chips].some(
+    (chip) => soleBoardOn(boards, chip) !== undefined,
+  );
+  return someSole ? null : undefined;
+}
+
+/** The project's board on a chip when it declares exactly one there. */
+function soleBoardOn(
+  boards: readonly RegistryBoard[] | undefined,
+  target: Target | undefined,
+): string | undefined {
+  const onTarget = (boards ?? []).filter((board) => board.target === target);
+  return onTarget.length === 1 ? onTarget[0]?.id : undefined;
+}
+
 export interface MatchDeviceOptions {
   app: AppName;
   target?: Target;
@@ -93,6 +136,12 @@ export interface MatchDeviceOptions {
   /** The key fingerprint the device trusts, when the firmware reports one. */
   keyFp?: string;
   includePrerelease?: boolean;
+  /**
+   * False while the device's board is unknown because its info could not be
+   * read: the sole-board rule then waits, as the board may be one nobody
+   * claims. Defaults to true.
+   */
+  boardRead?: boolean;
 }
 
 export interface MatchResult {
@@ -211,7 +260,7 @@ export function matchDevice(
     (board) => board.target === options.target,
   );
   const boardsOnTarget = onTarget.length;
-  const soleBoardId = boardsOnTarget === 1 ? onTarget[0]?.id : undefined;
+  const soleBoardId = soleBoardOn(project.boards, options.target);
 
   // options.board is what the DEVICE reported (a firmware-chosen name); builds
   // are keyed by the registry's board id. Resolve one to the other through the
@@ -225,7 +274,7 @@ export function matchDevice(
       options.target,
       boardId,
       boardsOnTarget,
-      soleBoardId,
+      options.boardRead === false ? undefined : soleBoardId,
       options.board !== undefined && options.board.trim() !== "",
     );
     if (build === undefined) continue;

@@ -10,7 +10,7 @@ import type { ManagerSettings } from "./config.js";
 import { PLUGIN_ID, PUBLIC_FW_BASE } from "./config.js";
 import { KeyStore } from "./device/auth.js";
 import { FleetPoller } from "./fleet/poller.js";
-import { FleetState } from "./fleet/state.js";
+import { boardSettled, FleetState, snapshotTarget } from "./fleet/state.js";
 import { publishFleetDeltas } from "./fleet/deltas.js";
 import { DayNightPublisher } from "./sky/dayNight.js";
 import { FirmwareStore } from "./mirror/store.js";
@@ -21,7 +21,7 @@ import {
 } from "./registry/client.js";
 import { OtaOrchestrator } from "./ota/orchestrator.js";
 import type { JobView } from "./ota/job.js";
-import type { CoprocessorUpdateStatus } from "./types.js";
+import type { CoprocessorUpdateStatus, Target } from "./types.js";
 import { DeviceClient, DeviceHttpError } from "./device/client.js";
 import { fleetKeyUsable, provisionFleetKey } from "./device/provision.js";
 import {
@@ -30,7 +30,7 @@ import {
   type FleetKeyChange,
 } from "./device/fleetKey.js";
 import {
-  boardIdFromReport,
+  manifestBoardId,
   matchDevice,
   projectForApp,
 } from "./registry/resolve.js";
@@ -590,8 +590,9 @@ export class ManagerService {
     }
     const match = matchDevice(project, {
       app: snapshot.app,
-      target: snapshot.target,
+      target: snapshotTarget(snapshot),
       board: snapshot.board,
+      boardRead: boardSettled(snapshot),
       runningVersion: snapshot.version,
       channel: settings.ota.channel,
       keyFp: snapshot.ota?.running?.keyFp,
@@ -967,19 +968,24 @@ export class ManagerService {
   }
 
   /**
-   * The registry's id for the board a device reports, from the index already
-   * held. Undefined when it reports none or nobody claims it, which means
-   * "the application's manifest"; null when no index has been fetched yet,
-   * so a caller can tell "no board" from "cannot say".
+   * The registry's id for the board whose manifest a device reads, from the
+   * index already held. Undefined means "the application's manifest"; null
+   * means the answer is not known yet: no index has been fetched, the index
+   * lacks the app's project, or the device has not reported the chip the
+   * answer depends on. A caller can so tell "no board" from "cannot say".
    */
   boardIdFor(
     app: string | undefined,
     reported: string | undefined,
+    target: Target | undefined,
+    boardRead = true,
   ): string | undefined | null {
     if (app === undefined) return undefined;
     const index = this.registryState?.index;
     if (index === undefined) return null;
-    return boardIdFromReport(projectForApp(index, app)?.boards, reported);
+    const project = projectForApp(index, app);
+    if (project === undefined) return null;
+    return manifestBoardId(project.boards, target, reported, boardRead);
   }
 
   /**

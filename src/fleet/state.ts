@@ -14,6 +14,7 @@ import type {
   DeviceRecord,
   DeviceSnapshot,
   Reachability,
+  Target,
 } from "../types.js";
 
 export interface ReachabilityWindows {
@@ -248,4 +249,37 @@ export class FleetState {
     if (needKey > 0) parts.push(`${needKey} need a key`);
     return parts.join(", ");
   }
+}
+
+/**
+ * A device's chip. What this probe read comes first, OTA status then system
+ * info, because an mDNS record can outlive the device that announced it.
+ * mDNS fills in only when neither live read named the chip.
+ */
+export function snapshotTarget(
+  snapshot: DeviceSnapshot | undefined,
+): Target | undefined {
+  return (
+    snapshot?.ota?.running?.target ?? snapshot?.info?.chip ?? snapshot?.target
+  );
+}
+
+/**
+ * Whether a device's board is known, as a board or as "none": it reported
+ * one, or a complete system info response named none. Until then the
+ * sole-board rule must not apply, because the device may have a board nobody
+ * claims. An info body without app and chip is not an espOS answer, and one
+ * without the hardware block comes from firmware older than espOS 0.10.0,
+ * which cannot report a board at all, so neither one's missing board says
+ * anything. espOS 0.10.0+ always sends the block, with or without a board.
+ */
+export function boardSettled(snapshot: DeviceSnapshot | undefined): boolean {
+  const board = snapshot?.board;
+  if (board !== undefined && board.trim() !== "") return true;
+  const info = snapshot?.info;
+  return (
+    info?.app !== undefined &&
+    info.chip !== undefined &&
+    info.hardware !== undefined
+  );
 }

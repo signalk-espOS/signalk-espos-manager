@@ -13,6 +13,8 @@
 
 import { describe, expect, it } from "vitest";
 import {
+  boardSettled,
+  snapshotTarget,
   deriveReachability,
   FleetState,
   shouldForget,
@@ -170,6 +172,87 @@ describe("FleetState", () => {
     expect(record?.snapshot?.version).toBe("1.2.0");
     expect(record?.consecutiveFailures).toBe(1);
     expect(record?.lastError).toMatch(/ECONNREFUSED/);
+  });
+
+  it("does not carry a board across a probe that read no info", () => {
+    // The address may now answer for a different device. Without info the
+    // board stays unknown, and boardSettled() keeps the sole-board rule off.
+    const fleet = new FleetState();
+    fleet.applyIdentities(new Map([["2be9", identity("2be9")]]), NOW);
+    fleet.recordSuccess(
+      "2be9",
+      {
+        ...snapshot(),
+        board: "Unclaimed Board",
+        info: { chip: "esp32p4" } as DeviceSnapshot["info"],
+      },
+      "open",
+      NOW,
+    );
+    fleet.recordSuccess("2be9", snapshot(), "open", NOW + 1);
+    const after = fleet.get("2be9")?.snapshot;
+    expect(after?.board).toBeUndefined();
+    expect(boardSettled(after)).toBe(false);
+  });
+
+  it("knows the board only once it is reported or info was read", () => {
+    expect(boardSettled(snapshot())).toBe(false);
+    expect(boardSettled({ ...snapshot(), board: "  " })).toBe(false);
+    expect(boardSettled({ ...snapshot(), board: "X" })).toBe(true);
+    expect(
+      boardSettled({
+        ...snapshot(),
+        info: {
+          app: "ble-gateway",
+          chip: "esp32c6",
+          hardware: { cpuMhz: 160 },
+        } as DeviceSnapshot["info"],
+      }),
+    ).toBe(true);
+  });
+
+  it("does not settle the board on an incomplete or legacy info body", () => {
+    for (const info of [
+      {},
+      { chip: "esp32c6" },
+      { app: "ble-gateway" },
+      // espOS before 0.10.0: no hardware block, so no way to report a board
+      { app: "ble-gateway", chip: "esp32c6" },
+    ]) {
+      expect(
+        boardSettled({ ...snapshot(), info: info as DeviceSnapshot["info"] }),
+      ).toBe(false);
+    }
+  });
+
+  it("takes the chip from a live read before a retained mDNS record", () => {
+    const ota = (target: string) =>
+      ({ running: { target } }) as unknown as DeviceSnapshot["ota"];
+    expect(snapshotTarget(undefined)).toBeUndefined();
+    expect(snapshotTarget({ ...snapshot(), target: "esp32c6" })).toBe(
+      "esp32c6",
+    );
+    expect(
+      snapshotTarget({ ...snapshot(), target: undefined, ota: ota("esp32c5") }),
+    ).toBe("esp32c5");
+    expect(
+      snapshotTarget({ ...snapshot(), target: "esp32c6", ota: ota("esp32c5") }),
+    ).toBe("esp32c5");
+    const info = {
+      app: "ble-gateway",
+      chip: "esp32p4",
+    } as DeviceSnapshot["info"];
+    expect(snapshotTarget({ ...snapshot(), target: "esp32c6", info })).toBe(
+      "esp32p4",
+    );
+    expect(
+      snapshotTarget({
+        ...snapshot(),
+        target: "esp32c6",
+        info,
+        ota: ota("esp32c5"),
+      }),
+    ).toBe("esp32c5");
   });
 
   it("clears the repair warning as soon as the device is configured", () => {

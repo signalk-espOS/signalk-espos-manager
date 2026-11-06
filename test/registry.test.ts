@@ -16,6 +16,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { parseIndex, RegistryClient } from "../src/registry/client.js";
 import {
   boardIdFromReport,
+  manifestBoardId,
   matchDevice,
   mergeIndexes,
   projectForApp,
@@ -446,6 +447,14 @@ describe("matchDevice", () => {
       matchDevice(labelled, { ...base, runningVersion: "1.1.0" }).build
         ?.version,
     ).toBe("1.2.0");
+    // Not while the board could not be read: it may be one nobody claims.
+    expect(
+      matchDevice(labelled, {
+        ...base,
+        runningVersion: "1.1.0",
+        boardRead: false,
+      }).build,
+    ).toBeUndefined();
   });
 
   it("withholds the only board's labelled build from an unrecognised board report", () => {
@@ -854,5 +863,74 @@ describe("boardIdFromReport", () => {
       { id: "x", target: "esp32p4" as const, name: "Some Panel" },
     ];
     expect(boardIdFromReport(undeclared, "Some Panel")).toBeUndefined();
+  });
+});
+
+describe("manifestBoardId", () => {
+  // projects/ble-gateway.json: one board per chip, each with an assetSegment,
+  // so every build is labelled; the gateway firmware reports no board.
+  const gateway = [
+    { id: "waveshare-p4-poe", target: "esp32p4" as const, name: "P4-ETH" },
+    { id: "waveshare-c6", target: "esp32c6" as const, name: "C6" },
+  ];
+  const panels = [
+    {
+      id: "waveshare-p4-touch-7b",
+      target: "esp32p4" as const,
+      name: "7B",
+      reportedAs: "Waveshare ESP32-P4-WIFI6-Touch-LCD-7B",
+    },
+    {
+      id: "waveshare-p4-touch-x-7",
+      target: "esp32p4" as const,
+      name: "X 7in",
+      reportedAs: "Waveshare ESP32-P4-WIFI6-Touch-LCD-X 7in",
+    },
+  ];
+
+  it("puts a boardless device on its chip's sole board", () => {
+    // Issue #70: the app manifest lists none of the gateway's builds.
+    expect(manifestBoardId(gateway, "esp32p4", undefined)).toBe(
+      "waveshare-p4-poe",
+    );
+    expect(manifestBoardId(gateway, "esp32c6", "  ")).toBe("waveshare-c6");
+  });
+
+  it("keeps the app manifest where the chip has several boards or none", () => {
+    expect(manifestBoardId(panels, "esp32p4", undefined)).toBeUndefined();
+    expect(manifestBoardId(gateway, "esp32s3", undefined)).toBeUndefined();
+    expect(manifestBoardId(undefined, "esp32p4", undefined)).toBeUndefined();
+    expect(manifestBoardId([], undefined, undefined)).toBeUndefined();
+  });
+
+  it("waits while the board could not be read", () => {
+    // A failed info read is no evidence of "no board": the device may name
+    // one nobody claims, which must not get the sole board's images.
+    expect(manifestBoardId(gateway, "esp32p4", undefined, false)).toBeNull();
+    // Where no sole board exists the answer is the app manifest either way.
+    expect(
+      manifestBoardId(panels, "esp32p4", undefined, false),
+    ).toBeUndefined();
+  });
+
+  it("cannot say for a boardless device whose chip is unknown", () => {
+    expect(manifestBoardId(gateway, undefined, undefined)).toBeNull();
+    // Unless no chip has a sole board: then it is the app manifest anyway.
+    expect(manifestBoardId(panels, undefined, undefined)).toBeUndefined();
+  });
+
+  it("resolves a reported board only through reportedAs", () => {
+    expect(
+      manifestBoardId(
+        panels,
+        "esp32p4",
+        "Waveshare ESP32-P4-WIFI6-Touch-LCD-X 7in",
+      ),
+    ).toBe("waveshare-p4-touch-x-7");
+    // A board nobody claims may be other hardware: matchDevice() withholds
+    // the sole board's labelled builds from it, so its manifest must too.
+    expect(
+      manifestBoardId(gateway, "esp32p4", "Some Other Board"),
+    ).toBeUndefined();
   });
 });
