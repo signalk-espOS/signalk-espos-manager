@@ -46,6 +46,23 @@ export class FleetKeyChangedError extends Error {
   }
 }
 
+/**
+ * Refuses a change meant for another key: `expected` is the revision the
+ * webapp was shown, undefined when the caller did not say.
+ */
+export function assertFleetKeyRevision(
+  current: string,
+  expected: string | undefined,
+  secret: Uint8Array,
+): void {
+  if (
+    expected !== undefined &&
+    expected !== fleetKeyRevision(current, secret)
+  ) {
+    throw new FleetKeyChangedError();
+  }
+}
+
 export interface FleetKeyChange {
   /** Devices that now hold the current fleet key. */
   updated: string[];

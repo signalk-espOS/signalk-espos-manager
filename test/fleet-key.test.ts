@@ -12,6 +12,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { KeyStore } from "../src/device/auth.js";
 import { DeviceClient } from "../src/device/client.js";
 import {
+  assertFleetKeyRevision,
   changeFleetKey,
   fleetKeyRevision,
   generateFleetKey,
@@ -20,6 +21,8 @@ import {
 import { fleetKeyUsable } from "../src/device/provision.js";
 import { SettingsSchema, applyDefaults } from "../src/config.js";
 import type { AuthState, DeviceRecord, Reachability } from "../src/types.js";
+import { registerRoutes, type PluginRouter } from "../src/api/routes.js";
+import type { ManagerService } from "../src/service.js";
 
 const servers: Server[] = [];
 let dataDir: string;
@@ -324,5 +327,71 @@ describe("fleetKeyRevision", () => {
     expect(fleetKeyRevision(key, new Uint8Array(16).fill(8))).not.toBe(
       revision,
     );
+  });
+});
+
+describe("DELETE /api/fleet-key", () => {
+  type Handler = (req: { body?: unknown }, res: unknown) => unknown;
+
+  function setup() {
+    const secret = new Uint8Array(16).fill(9);
+    let key = "shown-fleet-key";
+    const service = {
+      isRunning: true,
+      fleetKeyBusy: false,
+      get key() {
+        return key;
+      },
+      set key(next: string) {
+        key = next;
+      },
+      revision: () => fleetKeyRevision(key, secret),
+      async setFleetKey(next: string, expectRevision?: string) {
+        assertFleetKeyRevision(key, expectRevision, secret);
+        key = next;
+        return { updated: [], kept: [] };
+      },
+    };
+    const handlers = new Map<string, Handler>();
+    const add = (method: string) => (path: string, handler: Handler) =>
+      handlers.set(`${method} ${path}`, handler);
+    const router = {
+      get: add("GET"),
+      post: add("POST"),
+      delete: add("DELETE"),
+    } as unknown as PluginRouter;
+    registerRoutes(router, () => service as unknown as ManagerService);
+    const remove = (revision: string) =>
+      new Promise<{ status: number; body: unknown }>((resolve) => {
+        let status = 200;
+        const res = {
+          status(code: number) {
+            status = code;
+            return res;
+          },
+          json(body: unknown) {
+            resolve({ status, body });
+            return res;
+          },
+        };
+        handlers.get("DELETE /api/fleet-key")?.({ body: { revision } }, res);
+      });
+    return { service, remove };
+  }
+
+  it("refuses a stale revision and keeps the replacement key", async () => {
+    const { service, remove } = setup();
+    const shown = service.revision();
+    service.key = "replacement-key";
+    const reply = await remove(shown);
+    expect(reply.status).toBe(409);
+    expect(service.key).toBe("replacement-key");
+  });
+
+  it("removes the key when the revision is current", async () => {
+    const { service, remove } = setup();
+    const reply = await remove(service.revision());
+    expect(reply.status).toBe(200);
+    expect(service.key).toBe("");
   });
 });

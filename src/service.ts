@@ -29,7 +29,7 @@ import {
   changeFleetKey,
   moveToFleetKey,
   type FleetKeyChange,
-  FleetKeyChangedError,
+  assertFleetKeyRevision,
   fleetKeyRevision,
 } from "./device/fleetKey.js";
 import {
@@ -477,13 +477,11 @@ export class ManagerService {
       throw new Error("the fleet key is already being changed");
     }
     // Checked here, not in the route, so no other change can slip in between.
-    if (
-      expectRevision !== undefined &&
-      expectRevision !==
-        fleetKeyRevision(settings.auth.fleetKey ?? "", this.fleetKeySecret)
-    ) {
-      throw new FleetKeyChangedError();
-    }
+    assertFleetKeyRevision(
+      settings.auth.fleetKey ?? "",
+      expectRevision,
+      this.fleetKeySecret,
+    );
     this.fleetKeyChanging = true;
     try {
       // A provisioning write already on the wire would land the old key on a
