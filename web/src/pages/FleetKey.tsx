@@ -130,7 +130,6 @@ export function FleetKeyCard() {
             <button
               disabled={busy}
               onClick={() => {
-                setConfirmRemove(false);
                 void run(
                   "Remove the fleet key",
                   () => api.removeFleetKey(),
