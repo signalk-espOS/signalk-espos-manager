@@ -32,6 +32,24 @@ for (const m of meta.slice(0, 6)) console.log("     ", m.replace(/\s+/g," ").tri
 console.log("=== api calls:", [...new Set(apiCalls)].join(" | "));
 await page.screenshot({ path: (process.env.TMPDIR ?? "/tmp") + "/webapp-fleet.png", fullPage: true });
 
+// The fleet key: open the removal question, never answer it.
+const removeKey = page.locator("button", { hasText: /^Remove$/ });
+if (await removeKey.count()) {
+  await removeKey.first().click();
+  const keep = page.locator("button", { hasText: "Keep it" });
+  await keep.waitFor();
+  console.log("=== fleet key removal:", (await keep.locator("xpath=../..").innerText()).replace(/\s+/g, " ").trim());
+  await page.screenshot({ path: (process.env.TMPDIR ?? "/tmp") + "/webapp-fleet-key-remove.png", fullPage: true });
+  // The question has to work on a phone at the helm too.
+  await page.setViewportSize({ width: 360, height: 800 });
+  await page.screenshot({ path: (process.env.TMPDIR ?? "/tmp") + "/webapp-fleet-key-remove-360.png", fullPage: true });
+  await page.setViewportSize({ width: 900, height: 1000 });
+  await keep.click();
+  console.log("=== fleet key removal closed by Keep it:", (await keep.count()) === 0);
+} else {
+  console.log("=== fleet key: none set, so there is no removal to open");
+}
+
 // Open a device
 if (devices.length > 0) {
   await page.locator(".device-main").first().click();
