@@ -1,4 +1,4 @@
-import { useState } from "preact/hooks";
+import { useEffect, useState } from "preact/hooks";
 import { api, type FleetKeyChangeDto } from "../api.js";
 import { useStore } from "../store.js";
 
@@ -41,6 +41,8 @@ export function FleetKeyCard() {
   const [confirmRemove, setConfirmRemove] = useState(false);
 
   const status = fleet?.fleetKey;
+  // Another client may remove the key and set a new one; ask again for that.
+  useEffect(() => setConfirmRemove(false), [status?.set]);
   if (status === undefined) return null;
   const busy = acting.includes(ACT_KEY);
 
