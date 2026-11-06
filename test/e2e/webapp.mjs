@@ -32,7 +32,10 @@ for (const m of meta.slice(0, 6)) console.log("     ", m.replace(/\s+/g," ").tri
 console.log("=== api calls:", [...new Set(apiCalls)].join(" | "));
 await page.screenshot({ path: (process.env.TMPDIR ?? "/tmp") + "/webapp-fleet.png", fullPage: true });
 
-// The fleet key: open the removal question, never answer it.
+// The fleet key: open the removal question and dismiss it with "Keep it",
+// which must leave the key in place. The README's scratch config sets a key.
+const keyDeletes = [];
+page.on("request", (r) => { if (r.method() === "DELETE" && r.url().includes("/api/fleet-key")) keyDeletes.push(r.url()); });
 const removeKey = page.locator("button", { hasText: /^Remove$/ });
 if (await removeKey.count()) {
   await removeKey.first().click();
@@ -45,9 +48,16 @@ if (await removeKey.count()) {
   await page.screenshot({ path: (process.env.TMPDIR ?? "/tmp") + "/webapp-fleet-key-remove-360.png", fullPage: true });
   await page.setViewportSize({ width: 900, height: 1000 });
   await keep.click();
-  console.log("=== fleet key removal closed by Keep it:", (await keep.count()) === 0);
+  const fleetNow = await page.evaluate(async () => {
+    const r = await fetch("/plugins/signalk-espos-manager/api/fleet", { credentials: "same-origin" });
+    return r.ok ? (await r.json()).fleetKey : undefined;
+  });
+  const kept = (await keep.count()) === 0 && keyDeletes.length === 0 && fleetNow?.set === true;
+  console.log("=== fleet key kept by Keep it:", kept, keyDeletes.length ? `(DELETE sent: ${keyDeletes.join(", ")})` : "");
+  if (!kept) process.exitCode = 1;
 } else {
-  console.log("=== fleet key: none set, so there is no removal to open");
+  console.log("=== fleet key: none set, so the removal question could not be checked; set auth.fleetKey as in README.md");
+  process.exitCode = 1;
 }
 
 // Open a device

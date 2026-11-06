@@ -30,7 +30,9 @@ echo '{"name":"sk-e2e","version":"0.0.1","dependencies":{"signalk-espos-manager"
 ln -sfn "$PWD" "$C/node_modules/signalk-espos-manager"
 cat > "$C/plugin-config-data/signalk-espos-manager.json" <<'JSON'
 { "enabled": true,
-  "configuration": { "discovery": { "mdns": true, "staticHosts": ["<device-ip>"] } } }
+  "configuration": {
+    "discovery": { "mdns": true, "staticHosts": ["<device-ip>"] },
+    "auth": { "fleetKey": "scratch-fleet-key-for-the-e2e-check" } } }
 JSON
 # Any built signalk-server checkout whose node_modules match its source:
 (cd ../signalk-server && PORT=3100 EXTERNALPORT=3100 node . -c "$C") &
@@ -41,6 +43,12 @@ node test/e2e/webapp.mjs
 ```
 
 Screenshots land in `$TMPDIR`. Set `BASE` to point at another server.
+
+The scratch config sets a fleet key so the script can open the question
+behind Remove and dismiss it with "Keep it"; it fails if no key is set, if
+the question does not close, or if the key is gone afterwards. Use a scratch
+key, never the boat's: the manager contacts devices that ask for a key with
+it.
 
 ## The hosted flasher
 
