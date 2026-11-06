@@ -387,17 +387,19 @@ describe("DELETE /api/fleet-key", () => {
     };
     const remove = (revision: string) =>
       call("DELETE /api/fleet-key", { revision });
-    return { service, settings, saved, shownRevision, remove };
+    return { service, settings, keys, saved, shownRevision, remove };
   }
 
   it("refuses a stale revision and keeps the replacement key", async () => {
-    const { service, settings, saved, shownRevision, remove } = await setup();
+    const { service, settings, keys, saved, shownRevision, remove } =
+      await setup();
     const shown = await shownRevision();
     await service.setFleetKey("replacement-key");
     saved.length = 0;
     const reply = await remove(shown);
     expect(reply.status).toBe(409);
     expect(settings.auth.fleetKey).toBe("replacement-key");
+    expect(keys.fleetKey).toBe("replacement-key");
     expect(saved).toEqual([]);
   });
 
