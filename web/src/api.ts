@@ -132,7 +132,8 @@ export interface FleetDto {
     updatesAvailable: number;
   };
   warnings: string[];
-  fleetKey?: { set: boolean; autoProvision: boolean };
+  /** `revision` changes with the key and names it without revealing it. */
+  fleetKey?: { set: boolean; autoProvision: boolean; revision?: string };
 }
 
 export interface FleetKeyChangeDto {
@@ -278,8 +279,12 @@ export const api = {
     }),
   setFleetKey: (key: string) =>
     call<FleetKeyChangeDto>("/fleet-key", { method: "POST", body: { key } }),
-  removeFleetKey: () =>
-    call<FleetKeyChangeDto>("/fleet-key", { method: "DELETE" }),
+  /** With a revision, the server refuses if the key changed meanwhile. */
+  removeFleetKey: (revision?: string) =>
+    call<FleetKeyChangeDto>("/fleet-key", {
+      method: "DELETE",
+      body: revision === undefined ? undefined : { revision },
+    }),
   configureOta: (id: string) =>
     call<{ ok: boolean; manifestPath: string; restartRequired: boolean }>(
       `/fleet/${encodeURIComponent(id)}/configure-ota`,

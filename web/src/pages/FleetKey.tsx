@@ -39,10 +39,12 @@ export function FleetKeyCard() {
   const [outcome, setOutcome] = useState<string | undefined>();
   // Asked in the page: kiosk browsers on a plotter may block window.confirm().
   const [confirmRemove, setConfirmRemove] = useState(false);
+  // The key the question is about; the server refuses if it was replaced.
+  const [askedRevision, setAskedRevision] = useState<string | undefined>();
 
   const status = fleet?.fleetKey;
-  // Another client may remove the key and set a new one; ask again for that.
-  useEffect(() => setConfirmRemove(false), [status?.set]);
+  // Another client may replace the key; ask again for the new one.
+  useEffect(() => setConfirmRemove(false), [status?.set, status?.revision]);
   if (status === undefined) return null;
   const busy = acting.includes(ACT_KEY);
 
@@ -114,7 +116,13 @@ export function FleetKeyCard() {
           Use my own key
         </button>
         {status.set && !confirmRemove && (
-          <button disabled={busy} onClick={() => setConfirmRemove(true)}>
+          <button
+            disabled={busy}
+            onClick={() => {
+              setAskedRevision(status.revision);
+              setConfirmRemove(true);
+            }}
+          >
             Remove
           </button>
         )}
@@ -132,7 +140,7 @@ export function FleetKeyCard() {
               onClick={() => {
                 void run(
                   "Remove the fleet key",
-                  () => api.removeFleetKey(),
+                  () => api.removeFleetKey(askedRevision),
                   true,
                 );
               }}

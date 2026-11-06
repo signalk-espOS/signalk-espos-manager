@@ -13,6 +13,7 @@ import { KeyStore } from "../src/device/auth.js";
 import { DeviceClient } from "../src/device/client.js";
 import {
   changeFleetKey,
+  fleetKeyRevision,
   generateFleetKey,
   moveToFleetKey,
 } from "../src/device/fleetKey.js";
@@ -294,5 +295,34 @@ describe("fleet key in the settings form", () => {
     ).properties.auth;
     expect(auth.required ?? []).not.toContain("fleetKey");
     expect(applyDefaults({ auth: {} }).auth.fleetKey).toBe("");
+  });
+});
+
+describe("fleetKeyRevision", () => {
+  const secret = new Uint8Array(16).fill(7);
+
+  it("changes with the key, so a replaced key is not removed unasked", () => {
+    expect(fleetKeyRevision("old-fleet-key", secret)).not.toBe(
+      fleetKeyRevision("new-fleet-key", secret),
+    );
+    expect(fleetKeyRevision("old-fleet-key", secret)).not.toBe(
+      fleetKeyRevision("", secret),
+    );
+  });
+
+  it("stays the same for the same key and secret", () => {
+    expect(fleetKeyRevision("old-fleet-key", secret)).toBe(
+      fleetKeyRevision(" old-fleet-key\n", secret),
+    );
+  });
+
+  it("reveals nothing about the key", () => {
+    const key = "old-fleet-key";
+    const revision = fleetKeyRevision(key, secret);
+    expect(revision).not.toContain(key);
+    // Another process's secret gives another revision for the same key.
+    expect(fleetKeyRevision(key, new Uint8Array(16).fill(8))).not.toBe(
+      revision,
+    );
   });
 });

@@ -4,6 +4,7 @@
  */
 
 import type { ServerAPI } from "@signalk/server-api";
+import { randomBytes } from "node:crypto";
 import os from "node:os";
 import { join } from "node:path";
 import type { ManagerSettings } from "./config.js";
@@ -28,6 +29,8 @@ import {
   changeFleetKey,
   moveToFleetKey,
   type FleetKeyChange,
+  FleetKeyChangedError,
+  fleetKeyRevision,
 } from "./device/fleetKey.js";
 import {
   manifestBoardId,
@@ -60,6 +63,7 @@ export class ManagerService {
   private provisioning = false;
   private provisionKeyWarned = false;
   private fleetKeyChanging = false;
+  private readonly fleetKeySecret = randomBytes(16);
   /** The running provisioning + catch-up pass, one at a time. */
   private keyWork?: Promise<void>;
   /** Bumped by stop(), so a provisioning run from before it stands down. */
@@ -397,11 +401,16 @@ export class ManagerService {
     }
   }
 
-  /** What the webapp may know about the fleet key: whether one is set. */
-  fleetKeyStatus(): { set: boolean; autoProvision: boolean } {
+  /**
+   * What the webapp may know about the fleet key: whether one is set, and a
+   * revision that changes with the key but reveals nothing about it.
+   */
+  fleetKeyStatus(): { set: boolean; autoProvision: boolean; revision: string } {
+    const key = this.settings?.auth.fleetKey ?? "";
     return {
-      set: (this.settings?.auth.fleetKey ?? "").trim() !== "",
+      set: key.trim() !== "",
       autoProvision: this.settings?.auth.autoProvision ?? false,
+      revision: fleetKeyRevision(key, this.fleetKeySecret),
     };
   }
 
@@ -455,7 +464,10 @@ export class ManagerService {
    * Replace the fleet key ("" removes it), carrying the devices that use it
    * along, and save it to the plugin configuration without a restart.
    */
-  async setFleetKey(next: string): Promise<FleetKeyChange> {
+  async setFleetKey(
+    next: string,
+    expectRevision?: string,
+  ): Promise<FleetKeyChange> {
     const settings = this.settings;
     const keys = this.keys;
     if (!this.started || settings === undefined || keys === undefined) {
@@ -463,6 +475,14 @@ export class ManagerService {
     }
     if (this.fleetKeyChanging) {
       throw new Error("the fleet key is already being changed");
+    }
+    // Checked here, not in the route, so no other change can slip in between.
+    if (
+      expectRevision !== undefined &&
+      expectRevision !==
+        fleetKeyRevision(settings.auth.fleetKey ?? "", this.fleetKeySecret)
+    ) {
+      throw new FleetKeyChangedError();
     }
     this.fleetKeyChanging = true;
     try {
