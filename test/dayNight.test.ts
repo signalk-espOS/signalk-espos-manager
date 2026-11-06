@@ -98,14 +98,41 @@ describe("readPosition", () => {
 });
 
 describe("DayNightPublisher", () => {
+  /**
+   * The server's full model for environment.mode. `drop` stands for a source
+   * priority that filters our delta out before the model sees it.
+   */
   function fakeApp(position: unknown) {
-    const handleMessage = vi.fn();
+    const model: { mode?: Record<string, unknown> } = {};
+    const server = { drop: false, clock: 0 };
+    const handleMessage = vi.fn(
+      (
+        providerId: string,
+        delta: { updates: { values: { value: unknown }[] }[] },
+      ) => {
+        if (server.drop) return;
+        model.mode = {
+          value: delta.updates[0]?.values[0]?.value,
+          $source: providerId,
+          timestamp: new Date(++server.clock).toISOString(),
+        };
+      },
+    );
+    const setByHand = (value: string) => {
+      model.mode = {
+        value,
+        $source: "app-dock",
+        timestamp: new Date(++server.clock).toISOString(),
+      };
+    };
     const app = {
-      getSelfPath: vi.fn(() => position),
+      getSelfPath: vi.fn((path: string) =>
+        path === "environment.mode" ? model.mode : position,
+      ),
       handleMessage,
       debug: vi.fn(),
     } as unknown as ServerAPI;
-    return { app, handleMessage };
+    return { app, handleMessage, model, server, setByHand };
   }
 
   it("publishes environment.mode as this plugin", () => {
@@ -146,16 +173,157 @@ describe("DayNightPublisher", () => {
     expect(handleMessage).not.toHaveBeenCalled();
   });
 
-  it("stops republishing once stopped", () => {
+  it("publishes only when the mode changes", () => {
+    // A day/night switch made by hand must hold until sunrise or sunset.
+    const { app, handleMessage } = fakeApp({ value: equator });
+    let now = new Date("2024-06-21T12:00:00Z");
+    const publisher = new DayNightPublisher(
+      app,
+      "signalk-espos-manager",
+      () => now,
+    );
+    publisher.publish();
+    now = new Date("2024-06-21T12:01:00Z");
+    publisher.publish();
+    expect(handleMessage).toHaveBeenCalledTimes(1);
+    now = new Date("2024-06-21T20:00:00Z");
+    publisher.publish();
+    expect(handleMessage).toHaveBeenCalledTimes(2);
+    expect(handleMessage).toHaveBeenLastCalledWith("signalk-espos-manager", {
+      updates: [{ values: [{ path: "environment.mode", value: "night" }] }],
+    });
+  });
+
+  it("leaves a mode switched by hand alone until the next transition", () => {
+    const { app, handleMessage, model, setByHand } = fakeApp({
+      value: equator,
+    });
+    let now = new Date("2024-06-21T12:00:00Z");
+    const publisher = new DayNightPublisher(
+      app,
+      "signalk-espos-manager",
+      () => now,
+    );
+    publisher.publish();
+    setByHand("night");
+    now = new Date("2024-06-21T12:01:00Z");
+    publisher.publish();
+    expect(handleMessage).toHaveBeenCalledTimes(1);
+    expect(model.mode?.value).toBe("night");
+  });
+
+  it("sends a transition again until source priority lets it through", () => {
+    const { app, handleMessage, model, server } = fakeApp({ value: equator });
+    let now = new Date("2024-06-21T12:00:00Z");
+    const publisher = new DayNightPublisher(
+      app,
+      "signalk-espos-manager",
+      () => now,
+    );
+    publisher.publish();
+    server.drop = true;
+    now = new Date("2024-06-21T20:00:00Z");
+    publisher.publish();
+    now = new Date("2024-06-21T20:01:00Z");
+    publisher.publish();
+    expect(handleMessage).toHaveBeenCalledTimes(3);
+    expect(model.mode?.value).toBe("day");
+    server.drop = false;
+    now = new Date("2024-06-21T20:02:00Z");
+    publisher.publish();
+    expect(model.mode?.value).toBe("night");
+    now = new Date("2024-06-21T20:03:00Z");
+    publisher.publish();
+    expect(handleMessage).toHaveBeenCalledTimes(4);
+  });
+
+  it("stops sending a dropped transition once a newer choice arrives", () => {
+    const { app, handleMessage, model, server, setByHand } = fakeApp({
+      value: equator,
+    });
+    let now = new Date("2024-06-21T12:00:00Z");
+    const publisher = new DayNightPublisher(
+      app,
+      "signalk-espos-manager",
+      () => now,
+    );
+    publisher.publish();
+    server.drop = true;
+    now = new Date("2024-06-21T20:00:00Z");
+    publisher.publish();
+    expect(handleMessage).toHaveBeenCalledTimes(2);
+    setByHand("day");
+    server.drop = false;
+    now = new Date("2024-06-21T20:01:00Z");
+    publisher.publish();
+    expect(handleMessage).toHaveBeenCalledTimes(2);
+    expect(model.mode?.value).toBe("day");
+  });
+
+  it("reads a bare environment.mode value", () => {
+    const handleMessage = vi.fn();
+    const app = {
+      getSelfPath: vi.fn((path: string) =>
+        path === "environment.mode" ? "day" : { value: equator },
+      ),
+      handleMessage,
+      debug: vi.fn(),
+    } as unknown as ServerAPI;
+    const publisher = new DayNightPublisher(
+      app,
+      "signalk-espos-manager",
+      () => new Date("2024-06-21T12:00:00Z"),
+    );
+    publisher.publish();
+    publisher.publish();
+    expect(handleMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it("drops a pending transition when the Sun returns to the accepted mode", () => {
+    const { app, handleMessage, server } = fakeApp({ value: equator });
+    let now = new Date("2024-06-21T12:00:00Z");
+    const publisher = new DayNightPublisher(
+      app,
+      "signalk-espos-manager",
+      () => now,
+    );
+    publisher.publish();
+    server.drop = true;
+    now = new Date("2024-06-21T20:00:00Z");
+    publisher.publish();
+    now = new Date("2024-06-22T12:00:00Z");
+    publisher.publish();
+    publisher.publish();
+    expect(handleMessage).toHaveBeenCalledTimes(2);
+  });
+
+  it("publishes the mode again after a restart", () => {
+    const { app, handleMessage } = fakeApp({ value: equator });
+    const publisher = new DayNightPublisher(
+      app,
+      "signalk-espos-manager",
+      () => new Date("2024-06-21T12:00:00Z"),
+    );
+    publisher.start();
+    publisher.stop();
+    publisher.start();
+    publisher.stop();
+    expect(handleMessage).toHaveBeenCalledTimes(2);
+  });
+
+  it("stops checking once stopped", () => {
     vi.useFakeTimers();
     try {
+      vi.setSystemTime(new Date("2024-06-21T17:00:00Z"));
       const { app, handleMessage } = fakeApp({ value: equator });
       const publisher = new DayNightPublisher(app, "signalk-espos-manager");
       publisher.start();
-      vi.advanceTimersByTime(60_000);
+      expect(handleMessage).toHaveBeenCalledTimes(1);
+      // Sunset at 0,0 is about 18:07Z; the timer catches it within a minute.
+      vi.advanceTimersByTime(90 * 60_000);
       expect(handleMessage).toHaveBeenCalledTimes(2);
       publisher.stop();
-      vi.advanceTimersByTime(180_000);
+      vi.advanceTimersByTime(12 * 60 * 60_000);
       expect(handleMessage).toHaveBeenCalledTimes(2);
     } finally {
       vi.useRealTimers();
