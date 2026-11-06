@@ -168,8 +168,8 @@ also covers the midnight sun and the polar night. Until the server has a
 position nothing is published, and the panels stay bright. The mode is
 published only when it changes, so a day/night switch made by hand, such as
 App Dock's button, holds until the next sunrise or sunset. A restart of the
-plugin or the server publishes the current mode again and ends a manual switch.
-When a source priority ranks another publisher of `environment.mode` first, the
+plugin or the server works the mode out afresh and publishes it once there is a
+position, which ends a manual switch as soon as the server takes it. When a source priority ranks another publisher of `environment.mode` first, the
 server drops the plugin's change while that source is within its fallback
 timeout; the plugin sends it again every minute until the server takes it, or
 until a newer value arrives from elsewhere.

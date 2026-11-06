@@ -115,8 +115,9 @@ export class DayNightPublisher {
    * only when it changes: environment.mode is also switched by hand (App
    * Dock's day/night button), and restating it would undo that switch within
    * a minute. A manual switch holds until the next sunrise or sunset; a
-   * restart publishes the current mode again. A panel that connects later
-   * gets the last value from the server.
+   * restart sends the current mode again, which ends the switch once the
+   * server takes it. A panel that connects later gets the last value from the
+   * server.
    *
    * A sent mode counts only once the server's model shows it. With a source
    * priority ranking another publisher (App Dock) first, the server drops our
