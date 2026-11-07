@@ -32,6 +32,34 @@ for (const m of meta.slice(0, 6)) console.log("     ", m.replace(/\s+/g," ").tri
 console.log("=== api calls:", [...new Set(apiCalls)].join(" | "));
 await page.screenshot({ path: (process.env.TMPDIR ?? "/tmp") + "/webapp-fleet.png", fullPage: true });
 
+// The fleet key: open the removal question and dismiss it with "Keep it",
+// which must leave the key in place. The README's scratch config sets a key.
+const keyDeletes = [];
+page.on("request", (r) => { if (r.method() === "DELETE" && r.url().includes("/api/fleet-key")) keyDeletes.push(r.url()); });
+const removeKey = page.locator("button", { hasText: /^Remove$/ });
+if (await removeKey.count()) {
+  await removeKey.first().click();
+  const keep = page.locator("button", { hasText: "Keep it" });
+  await keep.waitFor();
+  console.log("=== fleet key removal:", (await keep.locator("xpath=../..").innerText()).replace(/\s+/g, " ").trim());
+  await page.screenshot({ path: (process.env.TMPDIR ?? "/tmp") + "/webapp-fleet-key-remove.png", fullPage: true });
+  // The question has to work on a phone at the helm too.
+  await page.setViewportSize({ width: 360, height: 800 });
+  await page.screenshot({ path: (process.env.TMPDIR ?? "/tmp") + "/webapp-fleet-key-remove-360.png", fullPage: true });
+  await page.setViewportSize({ width: 900, height: 1000 });
+  await keep.click();
+  const fleetNow = await page.evaluate(async () => {
+    const r = await fetch("/plugins/signalk-espos-manager/api/fleet", { credentials: "same-origin" });
+    return r.ok ? (await r.json()).fleetKey : undefined;
+  });
+  const kept = (await keep.count()) === 0 && keyDeletes.length === 0 && fleetNow?.set === true;
+  console.log("=== fleet key kept by Keep it:", kept, keyDeletes.length ? `(DELETE sent: ${keyDeletes.join(", ")})` : "");
+  if (!kept) process.exitCode = 1;
+} else {
+  console.log("=== fleet key: none set, so the removal question could not be checked; set auth.fleetKey as in README.md");
+  process.exitCode = 1;
+}
+
 // Open a device
 if (devices.length > 0) {
   await page.locator(".device-main").first().click();

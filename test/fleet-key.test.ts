@@ -13,12 +13,16 @@ import { KeyStore } from "../src/device/auth.js";
 import { DeviceClient } from "../src/device/client.js";
 import {
   changeFleetKey,
+  fleetKeyRevision,
   generateFleetKey,
   moveToFleetKey,
 } from "../src/device/fleetKey.js";
 import { fleetKeyUsable } from "../src/device/provision.js";
 import { SettingsSchema, applyDefaults } from "../src/config.js";
 import type { AuthState, DeviceRecord, Reachability } from "../src/types.js";
+import { registerRoutes, type PluginRouter } from "../src/api/routes.js";
+import { ManagerService } from "../src/service.js";
+import type { ServerAPI } from "@signalk/server-api";
 
 const servers: Server[] = [];
 let dataDir: string;
@@ -294,5 +298,115 @@ describe("fleet key in the settings form", () => {
     ).properties.auth;
     expect(auth.required ?? []).not.toContain("fleetKey");
     expect(applyDefaults({ auth: {} }).auth.fleetKey).toBe("");
+  });
+});
+
+describe("fleetKeyRevision", () => {
+  const secret = new Uint8Array(16).fill(7);
+
+  it("changes with the key, so a replaced key is not removed unasked", () => {
+    expect(fleetKeyRevision("old-fleet-key", secret)).not.toBe(
+      fleetKeyRevision("new-fleet-key", secret),
+    );
+    expect(fleetKeyRevision("old-fleet-key", secret)).not.toBe(
+      fleetKeyRevision("", secret),
+    );
+  });
+
+  it("stays the same for the same key and secret", () => {
+    expect(fleetKeyRevision("old-fleet-key", secret)).toBe(
+      fleetKeyRevision(" old-fleet-key\n", secret),
+    );
+  });
+
+  it("reveals nothing about the key", () => {
+    const key = "old-fleet-key";
+    const revision = fleetKeyRevision(key, secret);
+    expect(revision).not.toContain(key);
+    // Another process's secret gives another revision for the same key.
+    expect(fleetKeyRevision(key, new Uint8Array(16).fill(8))).not.toBe(
+      revision,
+    );
+  });
+});
+
+describe("DELETE /api/fleet-key", () => {
+  type Handler = (req: { body?: unknown }, res: unknown) => unknown;
+
+  // A real ManagerService, with the state start() would set but without its
+  // poller, mirror and registry, so the revision check under test is the
+  // service's own.
+  async function setup() {
+    const saved: unknown[] = [];
+    const app = {
+      debug: () => undefined,
+      error: () => undefined,
+      readPluginOptions: () => ({
+        configuration: { auth: { fleetKey: "shown-fleet-key" } },
+      }),
+      savePluginOptions: (options: unknown, done: (e?: unknown) => void) => {
+        saved.push(options);
+        done();
+      },
+    };
+    const service = new ManagerService(app as unknown as ServerAPI);
+    const settings = applyDefaults({ auth: { fleetKey: "shown-fleet-key" } });
+    const keys = new KeyStore({ dataDir });
+    await keys.load();
+    keys.setFleetKey("shown-fleet-key");
+    Object.assign(service, { started: true, settings, keys });
+
+    const handlers = new Map<string, Handler>();
+    const add = (method: string) => (path: string, handler: Handler) =>
+      handlers.set(`${method} ${path}`, handler);
+    const router = {
+      get: add("GET"),
+      post: add("POST"),
+      delete: add("DELETE"),
+    } as unknown as PluginRouter;
+    registerRoutes(router, () => service);
+    const call = (route: string, body?: unknown) =>
+      new Promise<{ status: number; body: unknown }>((resolve) => {
+        let status = 200;
+        const res = {
+          status(code: number) {
+            status = code;
+            return res;
+          },
+          json(reply: unknown) {
+            resolve({ status, body: reply });
+            return res;
+          },
+        };
+        handlers.get(route)?.({ body }, res);
+      });
+    const shownRevision = async () => {
+      const reply = await call("GET /api/fleet");
+      return (reply.body as { fleetKey: { revision: string } }).fleetKey
+        .revision;
+    };
+    const remove = (revision: string) =>
+      call("DELETE /api/fleet-key", { revision });
+    return { service, settings, keys, saved, shownRevision, remove };
+  }
+
+  it("refuses a stale revision and keeps the replacement key", async () => {
+    const { service, settings, keys, saved, shownRevision, remove } =
+      await setup();
+    const shown = await shownRevision();
+    await service.setFleetKey("replacement-key");
+    saved.length = 0;
+    const reply = await remove(shown);
+    expect(reply.status).toBe(409);
+    expect(settings.auth.fleetKey).toBe("replacement-key");
+    expect(keys.fleetKey).toBe("replacement-key");
+    expect(saved).toEqual([]);
+  });
+
+  it("removes the key when the revision is current", async () => {
+    const { settings, shownRevision, remove } = await setup();
+    const reply = await remove(await shownRevision());
+    expect(reply.status).toBe(200);
+    expect(settings.auth.fleetKey).toBe("");
   });
 });

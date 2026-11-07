@@ -14,7 +14,7 @@ import { configureOta } from "../ota/configure.js";
 import { matchDevice, projectForApp } from "../registry/resolve.js";
 import { summariseReleaseNotes } from "../mirror/manifest.js";
 import { DeviceClient } from "../device/client.js";
-import { generateFleetKey } from "../device/fleetKey.js";
+import { FleetKeyChangedError, generateFleetKey } from "../device/fleetKey.js";
 import { fleetKeyUsable } from "../device/provision.js";
 import { boardSettled } from "../fleet/state.js";
 import { deviceTarget, serializeDevice, serializeFleet } from "./serialize.js";
@@ -212,8 +212,16 @@ export function registerRoutes(
   // it as their own key; none is opened.
   router.delete(
     "/api/fleet-key",
-    guard((_req, res) => {
+    guard((req, res) => {
       void (async () => {
+        // body: { revision } from GET /api/fleet, so only the key the page
+        // showed is removed. Without it any key is removed, as before.
+        const body =
+          typeof req.body === "object" && req.body !== null
+            ? (req.body as Record<string, unknown>)
+            : {};
+        const revision =
+          typeof body.revision === "string" ? body.revision : undefined;
         const service = getService();
         if (service.fleetKeyBusy) {
           res
@@ -222,10 +230,12 @@ export function registerRoutes(
           return;
         }
         try {
-          const result = await service.setFleetKey("");
+          const result = await service.setFleetKey("", revision);
           res.json({ ok: true, ...result });
         } catch (error) {
-          res.status(500).json({ error: errorMessage(error) });
+          res
+            .status(error instanceof FleetKeyChangedError ? 409 : 500)
+            .json({ error: errorMessage(error) });
         }
       })();
     }),

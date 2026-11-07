@@ -10,7 +10,7 @@
  * the pins simply stay: removing the key never opens a device.
  */
 
-import { randomBytes } from "node:crypto";
+import { createHmac, randomBytes } from "node:crypto";
 import type { DeviceRecord } from "../types.js";
 import type { KeyStore } from "./auth.js";
 import { DeviceHttpError, type DeviceClient } from "./client.js";
@@ -22,6 +22,45 @@ import { fleetKeyUsable } from "./provision.js";
  */
 export function generateFleetKey(): string {
   return randomBytes(24).toString("base64url");
+}
+
+/**
+ * Names the current fleet key without revealing it, so the webapp can ask
+ * to remove "the key it was shown" and a key replaced meanwhile is refused.
+ * Keyed with a per-process secret: the value says nothing about the key, and
+ * a restart changes every revision, which only makes the question come back.
+ */
+export function fleetKeyRevision(key: string, secret: Uint8Array): string {
+  return createHmac("sha256", secret)
+    .update(key.trim())
+    .digest("base64url")
+    .slice(0, 16);
+}
+
+/** Thrown when the fleet key changed after the webapp asked about it. */
+export class FleetKeyChangedError extends Error {
+  constructor() {
+    super(
+      "the fleet key changed since this page showed it; check it and try again",
+    );
+  }
+}
+
+/**
+ * Refuses a change meant for another key: `expected` is the revision the
+ * webapp was shown, undefined when the caller did not say.
+ */
+export function assertFleetKeyRevision(
+  current: string,
+  expected: string | undefined,
+  secret: Uint8Array,
+): void {
+  if (
+    expected !== undefined &&
+    expected !== fleetKeyRevision(current, secret)
+  ) {
+    throw new FleetKeyChangedError();
+  }
 }
 
 export interface FleetKeyChange {
