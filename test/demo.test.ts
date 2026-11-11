@@ -35,7 +35,7 @@ const { applyDefaults, DEFAULT_REGISTRY_INDEX } =
   await import("../src/config.js");
 const { ManagerService } = await import("../src/service.js");
 const { registerRoutes, DEMO_REFUSAL } = await import("../src/api/routes.js");
-const { DEMO_DEVICES, demoRecord, demoVersion } =
+const { DEMO_DEVICES, demoBoardId, demoRecord, demoVersion } =
   await import("../src/demo/fixtures.js");
 type PluginRouter = import("../src/api/routes.js").PluginRouter;
 type RegistryIndex = import("../src/registry/types.js").RegistryIndex;
@@ -174,6 +174,18 @@ describe("demo fixtures", () => {
       projects: [{ ...INDEX.projects[0]!, releases: {} }],
     } as unknown as RegistryIndex;
     expect(demoVersion(broken, DEMO_DEVICES[0]!)).toBe("1.0.0");
+  });
+
+  it("take the board from the index they are built from", () => {
+    const broken = {
+      schema: 1,
+      projects: [{ ...INDEX.projects[0]!, boards: {} }],
+    } as unknown as RegistryIndex;
+    expect(demoBoardId(broken, DEMO_DEVICES[0]!)).toBeUndefined();
+    // The fallback index names no board, whatever another index holds.
+    expect(
+      demoBoardId({ schema: 1, projects: [] }, DEMO_DEVICES[0]!),
+    ).toBeUndefined();
   });
 
   it("fall back to a version when the index has none", () => {

@@ -14,8 +14,16 @@
 import { PUBLIC_FW_BASE } from "../config.js";
 import { manifestPathFor } from "../mirror/manifest.js";
 import { compareVersions } from "../mirror/version.js";
-import { matchDevice, projectForApp } from "../registry/resolve.js";
-import type { RegistryIndex, RegistryRelease } from "../registry/types.js";
+import {
+  manifestBoardId,
+  matchDevice,
+  projectForApp,
+} from "../registry/resolve.js";
+import type {
+  RegistryBoard,
+  RegistryIndex,
+  RegistryRelease,
+} from "../registry/types.js";
 import type { DeviceRecord, DeviceSnapshot, UpdateOffer } from "../types.js";
 
 export interface DemoDevice {
@@ -121,6 +129,23 @@ export function demoVersion(index: RegistryIndex, device: DemoDevice): string {
   const versions = stableVersions(index, device.app);
   return (
     versions[Math.min(device.behind, versions.length - 1)] ?? FALLBACK_VERSION
+  );
+}
+
+/**
+ * The board a device's manifest path names, from the index the record is
+ * built from, so a fallback index is never paired with the retained one.
+ */
+export function demoBoardId(
+  index: RegistryIndex,
+  device: DemoDevice,
+): string | undefined | null {
+  // A retained index is read back from disk, so its shape is not trusted.
+  const boards: unknown = projectForApp(index, device.app)?.boards;
+  return manifestBoardId(
+    Array.isArray(boards) ? (boards as RegistryBoard[]) : undefined,
+    device.chip,
+    device.board,
   );
 }
 

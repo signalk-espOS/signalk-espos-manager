@@ -38,7 +38,12 @@ import {
   projectForApp,
 } from "./registry/resolve.js";
 import { hardwareFor, type DeviceHardware } from "./registry/hardware.js";
-import { DEMO_DEVICES, demoDevice, demoRecord } from "./demo/fixtures.js";
+import {
+  DEMO_DEVICES,
+  demoBoardId,
+  demoDevice,
+  demoRecord,
+} from "./demo/fixtures.js";
 import type { RegistryIndex, RegistryProject } from "./registry/types.js";
 import {
   filenameFromUrl,
@@ -240,7 +245,7 @@ export class ManagerService {
         demoRecord(
           device,
           index,
-          this.boardIdFor(device.app, device.board, device.chip) ?? undefined,
+          demoBoardId(index, device) ?? undefined,
           startedAt,
           now,
         ),
