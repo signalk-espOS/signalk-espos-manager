@@ -32,7 +32,7 @@ relay switching, and whatever other developers add.
 
 ## Requirements
 
-- Signal K server 2.x on Node 22 or newer.
+- Signal K server 2.x on Node 24 or newer.
 - espOS devices reachable on the local network.
 
 ## Install

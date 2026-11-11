@@ -60,7 +60,7 @@
     "appIcon": "./icon.svg"
   },
   "engines": {
-    "node": ">=22"
+    "node": ">=24"
   },
   "dependencies": {
     "@openwaters/almanac": "^0.10.0",
@@ -72,7 +72,7 @@
     "@playwright/test": "^1.63.0",
     "@preact/preset-vite": "^2.10.6",
     "@signalk/server-api": "^2.32.0",
-    "@types/node": "^22.0.0",
+    "@types/node": "^24.0.0",
     "eslint": "^10.2.0",
     "eslint-config-prettier": "^10.1.8",
     "esptool-js": "^0.6.1",
