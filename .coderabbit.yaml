@@ -98,7 +98,7 @@ reviews:
         offers it) and it publishes `espos-manager.*` deltas. Tests are
         Vitest (`test/**/*.test.ts`) over captured device payloads
         (`test/fixtures/`) and a `node:http` fake device. CI is Signal
-        K's reusable `plugin-ci` workflow pinned to a SHA: Node 22 and 24,
+        K's reusable `plugin-ci` workflow pinned to a SHA: Node 24 and 26,
         `npm run ci-lint`, build, tests, then a live server integration
         on 2.32.0 and latest with the packed tarball installed
         `--ignore-scripts`. Releases are cut by release-please in
@@ -491,7 +491,7 @@ reviews:
       instructions: |
         `ci.yml` calls `SignalK/signalk-server/.github/workflows/plugin-ci.yml`
         pinned to a SHA (bump deliberately, with the version in a comment),
-        Node 22 and 24, `build-command: npm run build`,
+        Node 24 and 26, `build-command: npm run build`,
         `format-check-command: npm run ci-lint`, armv7 off, and the Signal
         K integration job on 2.32.0 and latest that installs the packed
         tarball `--ignore-scripts` and starts the plugin. `pages.yml`
@@ -509,7 +509,7 @@ reviews:
         `exports` (the Signal K loader reads `main`), `files` limited to
         `dist`, `public`, `icon.svg`, README and LICENSE, keywords
         `signalk-node-server-plugin` and `signalk-webapp`, `signalk.appIcon`,
-        `engines.node >= 22`, runtime dependencies only `typebox`
+        `engines.node >= 24`, runtime dependencies only `typebox`
         and `bonjour-service`. `prepare` runs the build and must stay quiet
         (`vite build --logLevel error`) because `npm pack` runs it and
         chatty output corrupts `npm pack --json`. `vite.config.ts`:
