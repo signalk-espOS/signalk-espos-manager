@@ -8,6 +8,9 @@
  * instead, for trying an espOS change. With neither, a placeholder page says
  * the demo is not in this build: the plugin works without it, only the demo
  * arrow has nothing to show.
+ *
+ * It reports on stderr: `npm pack --json` runs the build through `prepare`,
+ * and anything on stdout would break the JSON it prints.
  */
 
 import { execFileSync } from "node:child_process";
@@ -34,14 +37,14 @@ mkdirSync(out, { recursive: true });
 const local = process.env.ESPOS_UI_DEMO_DIR;
 if (local !== undefined && local !== "") {
   cpSync(local, out, { recursive: true });
-  console.log(`device-demo: copied ${local}`);
+  console.error(`device-demo: copied ${local}`);
 } else if (pin == null) {
   writeFileSync(
     join(out, "index.html"),
     "<!doctype html><meta charset=utf-8><title>espOS</title>" +
       "<p>The device demo is not part of this build.</p>\n",
   );
-  console.log("device-demo: none pinned, placeholder written");
+  console.error("device-demo: none pinned, placeholder written");
 } else {
   const { version, sha256 } = pin;
   if (!/^\d+\.\d+\.\d+$/.test(version) || !/^[0-9a-f]{64}$/.test(sha256)) {
@@ -64,5 +67,5 @@ if (local !== undefined && local !== "") {
   } finally {
     rmSync(archive, { force: true });
   }
-  console.log(`device-demo: espOS ${version}`);
+  console.error(`device-demo: espOS ${version}`);
 }
