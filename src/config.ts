@@ -268,9 +268,9 @@ export const SettingsSchema = Type.Object({
     default: false,
     description:
       "For a public demonstration server. Shows three virtual espOS devices " +
-      "to everyone, without a login, and refuses every change, also for " +
-      "administrators. No device on the network is looked for or " +
-      "contacted. Leave off on a boat.",
+      "and refuses every change, also for administrators. Visitors without " +
+      "a login see it when the server allows read-only access. No device " +
+      "on the network is looked for or contacted. Leave off on a boat.",
   }),
   discovery: DiscoverySchema,
   auth: AuthSchema,

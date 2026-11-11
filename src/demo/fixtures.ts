@@ -23,8 +23,6 @@ export interface DemoDevice {
   hostname: string;
   /** The firmware's app name, as the registry's `app` spells it. */
   app: string;
-  /** The device UI profile the arrow opens (espOS ui/src/demo/profiles.ts). */
-  profile: string;
   chip: string;
   chipRevision: number;
   cores: number;
@@ -50,7 +48,6 @@ export const DEMO_DEVICES: readonly DemoDevice[] = [
     id: "espos-cockpit",
     hostname: "espos-cockpit",
     app: "cockpit",
-    profile: "cockpit",
     chip: "esp32p4",
     chipRevision: 100,
     cores: 2,
@@ -71,7 +68,6 @@ export const DEMO_DEVICES: readonly DemoDevice[] = [
     id: "espos-engine-room",
     hostname: "espos-engine-room",
     app: "ble_gateway",
-    profile: "ble-gateway",
     chip: "esp32c5",
     chipRevision: 100,
     cores: 1,
@@ -90,7 +86,6 @@ export const DEMO_DEVICES: readonly DemoDevice[] = [
     id: "espos-zigbee",
     hostname: "espos-zigbee",
     app: "zigbee_coordinator",
-    profile: "zigbee-coordinator",
     chip: "esp32c5",
     chipRevision: 100,
     cores: 1,

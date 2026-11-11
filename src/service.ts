@@ -264,7 +264,6 @@ export class ManagerService {
 
   /** Force an immediate mDNS re-query and poll. */
   async rescan(): Promise<void> {
-    if (this.isDemo) return;
     await this.poller?.rescan();
   }
 

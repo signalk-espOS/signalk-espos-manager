@@ -46,9 +46,9 @@ export function FleetKeyCard() {
   const status = fleet?.fleetKey;
   // Another client may replace the key; ask again for the new one.
   useEffect(() => setConfirmRemove(false), [status?.set, status?.revision]);
+  const lock = useLock();
   if (status === undefined) return null;
   const busy = acting.includes(ACT_KEY);
-  const lock = useLock();
 
   const run = (
     what: string,

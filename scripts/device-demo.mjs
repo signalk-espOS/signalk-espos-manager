@@ -21,8 +21,9 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 
-const root = new URL("..", import.meta.url).pathname;
+const root = fileURLToPath(new URL("..", import.meta.url));
 const out = join(root, "public", "device-demo");
 const pkg = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
 const pin = pkg.espos?.uiDemo;

@@ -51,6 +51,8 @@ interface ManagerState {
    * visible; actions are shown disabled.
    */
   readOnly: boolean;
+  /** Whether the server has answered /api/mode; `readOnly` holds the answer. */
+  modeKnown: boolean;
   /** Why the last background refresh failed; cleared by the next one. */
   loadError?: string;
   /**
@@ -107,6 +109,7 @@ export const useStore = create<ManagerState>((set, get) => ({
   loading: false,
   needsLogin: false,
   readOnly: false,
+  modeKnown: false,
   acting: [],
   inlineErrors: {},
 
@@ -126,13 +129,19 @@ export const useStore = create<ManagerState>((set, get) => ({
     set({ loading: true });
     try {
       // A demo shows itself to visitors with no login, so it is asked first.
-      // Anything but a yes (an older plugin, a server that lets nobody read
-      // without a login) is the normal path below.
-      const demo = await api.mode().then(
-        (mode) => mode.demo,
-        () => false,
-      );
-      set({ readOnly: demo });
+      // The answer changes only with a plugin restart, which reloads nothing
+      // here, so it is asked until it arrives once. A failure keeps what is
+      // known: a blip must not drop a demo visitor onto the login prompt. A
+      // server that never answers (an older plugin, no read access without a
+      // login) takes the normal path below.
+      if (!get().modeKnown) {
+        const demo = await api.mode().then(
+          (mode) => mode.demo,
+          () => undefined,
+        );
+        if (demo !== undefined) set({ readOnly: demo, modeKnown: true });
+      }
+      const demo = get().readOnly;
       const status = demo ? undefined : await loginStatus();
       if (status !== undefined && !status.loggedIn) {
         // Not an error: the webapp is reachable without a login by design.
