@@ -86,6 +86,9 @@
     "zustand": "^5.0.15"
   },
   "espos": {
-    "uiDemo": null
+    "uiDemo": {
+      "version": "0.29.0",
+      "sha256": "9a886c22196fe2e29d734b95a0a39aa0537921dd082355416553a12d758085e9"
+    }
   }
 }
