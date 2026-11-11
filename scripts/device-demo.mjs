@@ -55,7 +55,8 @@ if (local !== undefined && local !== "") {
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     bytes = Buffer.from(await response.arrayBuffer());
   } catch (error) {
-    if (process.env.CI) throw new Error(`device-demo: ${url}: ${error}`);
+    if (process.env.CI === "true")
+      throw new Error(`device-demo: ${url}: ${error}`);
     placeholder(`${url} unreachable (${error})`);
     process.exit(0);
   }

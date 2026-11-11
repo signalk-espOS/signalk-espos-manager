@@ -936,40 +936,44 @@ describe("manifestBoardId", () => {
 });
 
 describe("parseIndex lists", () => {
-  it("drops boards and releases it cannot walk, keeping the project", () => {
+  it("skips a project whose boards it cannot read, and narrows releases", () => {
     const parsed = parseIndex({
       projects: [
-        {
-          id: "a",
-          app: "a",
-          targets: ["esp32c5"],
-          boards: {},
-          releases: "none",
-        },
+        { id: "a", app: "a", targets: ["esp32c5"], boards: {} },
         {
           id: "b",
           app: "b",
           targets: ["esp32c5"],
-          boards: [null, { id: "x" }, { id: "y", target: "esp32c5" }],
+          // One board without an id would make "y" look like the chip's only
+          // board, and a board-less build would then be offered to both.
+          boards: [{ target: "esp32c5" }, { id: "y", target: "esp32c5" }],
+        },
+        {
+          id: "c",
+          app: "c",
+          targets: ["esp32c5"],
+          boards: [{ id: "y", target: "esp32c5" }],
           releases: [
-            { version: "1.0.0", channel: "stable", builds: {} },
+            { version: "1.0.0", builds: {} },
+            { version: "0.9.0", channel: 3 },
             { version: 2, channel: "stable" },
+            null,
           ],
         },
-        { id: "c", app: "c", targets: [] },
+        { id: "d", app: "d", targets: [], releases: "none" },
       ],
     });
-    const [a, b, c] = parsed.projects;
-    expect(a?.boards).toEqual([]);
-    expect(a?.releases).toEqual([]);
-    expect(b?.boards?.map((board) => [board.id, board.name])).toEqual([
+    expect(parsed.projects.map((project) => project.id)).toEqual(["c", "d"]);
+    const [c, d] = parsed.projects;
+    expect(c?.boards?.map((board) => [board.id, board.name])).toEqual([
       ["y", "y"],
     ]);
-    expect(b?.releases).toMatchObject([
-      { version: "1.0.0", tag: "1.0.0", builds: [] },
+    // An absent channel is stable; one that is there but not text is dropped.
+    expect(c?.releases).toMatchObject([
+      { version: "1.0.0", tag: "1.0.0", channel: "stable", builds: [] },
     ]);
+    expect(d?.releases).toEqual([]);
     // Absent stays absent: an entry without boards is not one with none.
-    expect(c?.boards).toBeUndefined();
-    expect(c?.releases).toBeUndefined();
+    expect(d?.boards).toBeUndefined();
   });
 });
