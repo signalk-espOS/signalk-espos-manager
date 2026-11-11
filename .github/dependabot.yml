@@ -1,0 +1,45 @@
+# Weekly dependency PRs. The commit prefix becomes the PR title, which
+# publish.yml and label-by-title.yml read: build(deps) is a runtime bump and
+# refreshes the release PR, build(deps-dev) is a dev bump and stays out of the
+# release notes. Runtime and dev bumps are grouped separately so a grouped PR
+# never carries a dev bump under a releasable title.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: build
+      prefix-development: build
+      include: scope
+    groups:
+      runtime:
+        dependency-type: production
+        update-types:
+          - minor
+          - patch
+      dev:
+        dependency-type: development
+        update-types:
+          - minor
+          - patch
+    ignore:
+      # @types/node majors track the Node.js major; move them together with
+      # engines.node and the CI node versions, not on their own.
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: ci
+      include: scope
+    groups:
+      actions:
+        update-types:
+          - minor
+          - patch
