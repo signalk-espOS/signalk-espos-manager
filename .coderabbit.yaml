@@ -100,7 +100,7 @@ reviews:
         (`test/fixtures/`) and a `node:http` fake device. CI is Signal
         K's reusable `plugin-ci` workflow pinned to a SHA: Node 24 and 26,
         `npm run ci-lint`, build, tests, then a live server integration
-        on 2.32.0 and latest with the packed tarball installed
+        on latest with the packed tarball installed
         `--ignore-scripts`. Releases are cut by release-please in
         `publish.yml`, which publishes to npm with trusted publishing;
         the version is never bumped by hand.
@@ -493,7 +493,7 @@ reviews:
         pinned to a SHA (bump deliberately, with the version in a comment),
         Node 24 and 26, `build-command: npm run build`,
         `format-check-command: npm run ci-lint`, armv7 off, and the Signal
-        K integration job on 2.32.0 and latest that installs the packed
+        K integration job on latest that installs the packed
         tarball `--ignore-scripts` and starts the plugin. `pages.yml`
         deploys `public/*` plus a root redirect to `./flash/` with
         `pages: write` and `id-token: write`, on pushes to main touching
