@@ -89,13 +89,6 @@ export function registerRoutes(
       router.delete(path, refuseInDemo(handler)),
   };
 
-  // GET /api/mode — whether this is a demo. Read before the login check, so a
-  // visitor to a demo server sees the demo instead of a login prompt. Not
-  // guarded: a stopped plugin is simply not a demo.
-  readonly.get("/api/mode", (_req, res) =>
-    res.json({ demo: getService().isDemo }),
-  );
-
   // GET /api/fleet — the device list behind the Fleet page.
   readonly.get(
     "/api/fleet",
@@ -111,6 +104,9 @@ export function registerRoutes(
           (app, board) => service.hardwareFor(app, board),
         ),
         fleetKey: service.fleetKeyStatus(),
+        // With the devices, so the web app never shows one mode's fleet
+        // with the other mode's controls.
+        demo: service.isDemo,
       });
     }),
   );

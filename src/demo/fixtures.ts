@@ -15,7 +15,7 @@ import { PUBLIC_FW_BASE } from "../config.js";
 import { manifestPathFor } from "../mirror/manifest.js";
 import { compareVersions } from "../mirror/version.js";
 import { matchDevice, projectForApp } from "../registry/resolve.js";
-import type { RegistryIndex } from "../registry/types.js";
+import type { RegistryIndex, RegistryRelease } from "../registry/types.js";
 import type { DeviceRecord, DeviceSnapshot, UpdateOffer } from "../types.js";
 
 export interface DemoDevice {
@@ -107,10 +107,13 @@ const FALLBACK_VERSION = "1.0.0";
 
 /** The stable versions the index lists for an app, newest first. */
 function stableVersions(index: RegistryIndex, app: string): string[] {
-  const project = projectForApp(index, app);
-  return (project?.releases ?? [])
-    .filter((release) => release.channel === "stable")
+  // A retained index is read back from disk, so its shape is not trusted.
+  const releases: unknown = projectForApp(index, app)?.releases;
+  if (!Array.isArray(releases)) return [];
+  return (releases as Partial<RegistryRelease>[])
+    .filter((release) => release?.channel === "stable")
     .map((release) => release.version)
+    .filter((version): version is string => typeof version === "string")
     .sort((a, b) => compareVersions(b, a));
 }
 

@@ -168,6 +168,14 @@ describe("demo fixtures", () => {
     }
   });
 
+  it("read a malformed retained index as no releases", () => {
+    const broken = {
+      schema: 1,
+      projects: [{ ...INDEX.projects[0]!, releases: {} }],
+    } as unknown as RegistryIndex;
+    expect(demoVersion(broken, DEMO_DEVICES[0]!)).toBe("1.0.0");
+  });
+
   it("fall back to a version when the index has none", () => {
     expect(demoVersion({ schema: 1, projects: [] }, DEMO_DEVICES[0]!)).toBe(
       "1.0.0",
@@ -205,11 +213,12 @@ describe("demo mode", () => {
 
   it("says so, and serves the fleet to readers", async () => {
     const { call, service } = await startDemo();
-    expect((await call("GET /api/mode")).body).toEqual({ demo: true });
     const fleet = (await call("GET /api/fleet")).body as {
       devices: { id: string }[];
       summary: { updatesAvailable: number };
+      demo: boolean;
     };
+    expect(fleet.demo).toBe(true);
     expect(fleet.devices.map((d) => d.id).sort()).toEqual([
       "espos-cockpit",
       "espos-engine-room",
@@ -239,7 +248,7 @@ describe("demo mode", () => {
 
   it("is off by default, and then nothing changes", async () => {
     const { call, service } = await startDemo(false);
-    expect((await call("GET /api/mode")).body).toEqual({ demo: false });
+    expect((await call("GET /api/fleet")).body).toMatchObject({ demo: false });
     expect(pollerStarted).toHaveBeenCalledOnce();
     expect(applyDefaults({}).demo).toBe(false);
     await service.stop();

@@ -51,8 +51,6 @@ interface ManagerState {
    * visible; actions are shown disabled.
    */
   readOnly: boolean;
-  /** When /api/mode last answered (0: never); `readOnly` holds the answer. */
-  modeCheckedAt: number;
   /** Why the last background refresh failed; cleared by the next one. */
   loadError?: string;
   /**
@@ -94,8 +92,6 @@ function describe(error: unknown): string {
 }
 
 let registryInFlight = false;
-/** How often the server is asked again whether it runs the demo. */
-const MODE_RECHECK_MS = 60_000;
 
 function withoutKey(
   map: Record<string, string>,
@@ -111,7 +107,6 @@ export const useStore = create<ManagerState>((set, get) => ({
   loading: false,
   needsLogin: false,
   readOnly: false,
-  modeCheckedAt: 0,
   acting: [],
   inlineErrors: {},
 
@@ -130,33 +125,31 @@ export const useStore = create<ManagerState>((set, get) => ({
   refresh: async () => {
     set({ loading: true });
     try {
-      // A demo shows itself to visitors with no login, so it is asked first.
-      // The answer changes only when the settings restart the plugin, so it
-      // is asked again once a minute rather than on every refresh. A failure
-      // keeps what is known: a blip must not drop a demo visitor onto the
-      // login prompt. A server that never answers (an older plugin, no read
-      // access without a login) takes the normal path below.
-      if (Date.now() - get().modeCheckedAt >= MODE_RECHECK_MS) {
-        const demo = await api.mode().then(
-          (mode) => mode.demo,
-          () => undefined,
-        );
-        if (demo !== undefined) {
-          set({ readOnly: demo, modeCheckedAt: Date.now() });
-        }
+      // The fleet says whether this is a demo, so the mode always matches
+      // the devices on screen. A demo needs no login; a visitor without one
+      // still gets its fleet, which is how a demo shows itself to them.
+      const wasDemo = get().readOnly;
+      const status = wasDemo ? undefined : await loginStatus();
+      const loggedOut = status !== undefined && !status.loggedIn;
+      let loaded: [FleetDto, MirrorDto, JobsDto] | undefined;
+      try {
+        loaded = await Promise.all([api.fleet(), api.mirror(), api.jobs()]);
+      } catch (error) {
+        if (!loggedOut) throw error;
       }
-      const demo = get().readOnly;
-      const status = demo ? undefined : await loginStatus();
-      if (status !== undefined && !status.loggedIn) {
+      if (loaded === undefined || (loggedOut && loaded[0].demo !== true)) {
         // Not an error: the webapp is reachable without a login by design.
         set({ needsLogin: true, loading: false });
         return;
       }
-      const [fleet, mirror, jobs] = await Promise.all([
-        api.fleet(),
-        api.mirror(),
-        api.jobs(),
-      ]);
+      const [fleet, mirror, jobs] = loaded;
+      const demo = fleet.demo === true;
+      if (wasDemo && !demo) {
+        // The demo was switched off: drop the virtual fleet and start over
+        // through the login check before anything is enabled.
+        set({ readOnly: false, fleet: undefined });
+        return get().refresh();
+      }
       // Show the fleet immediately. The registry is a separate, slower fetch
       // over the internet, and awaiting it here delayed the device list behind
       // a request that may take seconds or never finish at all.
@@ -164,6 +157,7 @@ export const useStore = create<ManagerState>((set, get) => ({
         fleet,
         mirror,
         jobs,
+        readOnly: demo,
         needsLogin: false,
         loading: false,
         loadError: undefined,

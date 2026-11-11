@@ -137,6 +137,8 @@ export interface FleetDto {
   warnings: string[];
   /** `revision` changes with the key and names it without revealing it. */
   fleetKey?: { set: boolean; autoProvision: boolean; revision?: string };
+  /** A demo server: virtual devices, every change refused. Absent before 0.9. */
+  demo?: boolean;
 }
 
 export interface FleetKeyChangeDto {
@@ -255,7 +257,6 @@ export interface JobsDto {
 }
 
 export const api = {
-  mode: () => call<{ demo: boolean }>("/mode"),
   fleet: () => call<FleetDto>("/fleet"),
   device: (id: string) => call<DeviceDto>(`/fleet/${encodeURIComponent(id)}`),
   available: (id: string) =>

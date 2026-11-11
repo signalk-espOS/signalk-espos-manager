@@ -22,7 +22,7 @@ import {
 } from "./registry/client.js";
 import { OtaOrchestrator } from "./ota/orchestrator.js";
 import type { JobView } from "./ota/job.js";
-import type { CoprocessorUpdateStatus, Target } from "./types.js";
+import type { CoprocessorUpdateStatus, DeviceRecord, Target } from "./types.js";
 import { DeviceClient, DeviceHttpError } from "./device/client.js";
 import { fleetKeyUsable, provisionFleetKey } from "./device/provision.js";
 import {
@@ -39,7 +39,7 @@ import {
 } from "./registry/resolve.js";
 import { hardwareFor, type DeviceHardware } from "./registry/hardware.js";
 import { DEMO_DEVICES, demoDevice, demoRecord } from "./demo/fixtures.js";
-import type { RegistryProject } from "./registry/types.js";
+import type { RegistryIndex, RegistryProject } from "./registry/types.js";
 import {
   filenameFromUrl,
   firmwareUrlFor,
@@ -235,20 +235,31 @@ export class ManagerService {
     this.fleet.replaceAll([]);
     // The fixtures from whatever index is at hand, so the fleet is never empty
     // while a slow registry is awaited; the fresh index replaces them after.
-    const build = (): void => {
-      const index = this.registryState?.index ?? { schema: 1, projects: [] };
-      const now = Date.now();
-      this.fleet.replaceAll(
-        DEMO_DEVICES.map((device) =>
-          demoRecord(
-            device,
-            index,
-            this.boardIdFor(device.app, device.board, device.chip) ?? undefined,
-            startedAt,
-            now,
-          ),
+    const records = (index: RegistryIndex, now: number): DeviceRecord[] =>
+      DEMO_DEVICES.map((device) =>
+        demoRecord(
+          device,
+          index,
+          this.boardIdFor(device.app, device.board, device.chip) ?? undefined,
+          startedAt,
+          now,
         ),
       );
+    const build = (): void => {
+      const now = Date.now();
+      let fleet: DeviceRecord[];
+      try {
+        fleet = records(
+          this.registryState?.index ?? { schema: 1, projects: [] },
+          now,
+        );
+      } catch (error) {
+        // An index this cannot read still leaves the devices on show, at
+        // the fallback version, and the next refresh tries again.
+        this.app.debug(`demo: registry index unusable: ${String(error)}`);
+        fleet = records({ schema: 1, projects: [] }, now);
+      }
+      this.fleet.replaceAll(fleet);
       this.fleet.markPolled();
       this.report();
     };
