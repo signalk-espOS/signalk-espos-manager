@@ -233,13 +233,9 @@ export class ManagerService {
     const startedAt = Date.now();
     // Whatever a previous non-demo run found is not shown beside fixtures.
     this.fleet.replaceAll([]);
-    const seed = async (): Promise<void> => {
-      try {
-        await this.getIndex();
-      } catch (error) {
-        this.app.debug(`demo: registry index unavailable: ${String(error)}`);
-      }
-      if (generation !== this.generation || !this.isDemo) return;
+    // The fixtures from whatever index is at hand, so the fleet is never empty
+    // while a slow registry is awaited; the fresh index replaces them after.
+    const build = (): void => {
       const index = this.registryState?.index ?? { schema: 1, projects: [] };
       const now = Date.now();
       this.fleet.replaceAll(
@@ -256,6 +252,16 @@ export class ManagerService {
       this.fleet.markPolled();
       this.report();
     };
+    const seed = async (): Promise<void> => {
+      try {
+        await this.getIndex();
+      } catch (error) {
+        this.app.debug(`demo: registry index unavailable: ${String(error)}`);
+      }
+      if (generation !== this.generation || !this.isDemo) return;
+      build();
+    };
+    build();
     void seed();
     this.demoTimer = setInterval(() => {
       void seed();

@@ -108,8 +108,11 @@ async function startDemo(demo = true) {
   await service.start(
     applyDefaults({ demo, dayNight: { publishMode: false } }),
   );
+  // Seeded from the fetched index once it arrives.
   await vi.waitFor(() => {
-    if (demo) expect(service.fleet.size).toBe(3);
+    if (demo) {
+      expect(service.fleet.get("espos-engine-room")?.update).toBeDefined();
+    }
   });
 
   const handlers = new Map<string, Handler>();
@@ -173,6 +176,23 @@ describe("demo fixtures", () => {
 });
 
 describe("demo mode", () => {
+  it("shows the fleet at once, before the registry answers", async () => {
+    vi.stubGlobal("fetch", () => new Promise<Response>(() => undefined));
+    const service = new ManagerService({
+      debug: () => undefined,
+      error: () => undefined,
+      setPluginStatus: () => undefined,
+      setPluginError: () => undefined,
+      handleMessage: () => undefined,
+      getDataDirPath: () => dataDir,
+    } as unknown as ServerAPI);
+    await service.start(
+      applyDefaults({ demo: true, dayNight: { publishMode: false } }),
+    );
+    expect(service.fleet.size).toBe(3);
+    await service.stop();
+  });
+
   it("contacts nothing but the registry index", async () => {
     const { service } = await startDemo();
     expect(pollerStarted).not.toHaveBeenCalled();

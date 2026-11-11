@@ -33,7 +33,7 @@ function serve(routes: Record<string, unknown>): string[] {
 
 afterEach(() => {
   vi.unstubAllGlobals();
-  useStore.setState({ readOnly: false, modeKnown: false, needsLogin: false });
+  useStore.setState({ readOnly: false, modeCheckedAt: 0, needsLogin: false });
 });
 
 describe("store on a demo server", () => {
@@ -81,6 +81,20 @@ describe("store on a demo server", () => {
     expect(state.readOnly).toBe(true);
     expect(state.needsLogin).toBe(false);
     expect(asked).not.toContain("/plugins/signalk-espos-manager/api/mode");
+    expect(asked).not.toContain("/skServer/loginStatus");
+  });
+
+  it("asks again after a minute and keeps the demo when that fails", async () => {
+    serve({
+      ...empty,
+      "/plugins/signalk-espos-manager/api/mode": { demo: true },
+    });
+    await useStore.getState().refresh();
+    useStore.setState({ modeCheckedAt: Date.now() - 61_000 });
+    const asked = serve({ ...empty });
+    await useStore.getState().refresh();
+    expect(asked).toContain("/plugins/signalk-espos-manager/api/mode");
+    expect(useStore.getState().readOnly).toBe(true);
     expect(asked).not.toContain("/skServer/loginStatus");
   });
 });

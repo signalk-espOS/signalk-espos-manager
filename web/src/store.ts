@@ -51,8 +51,8 @@ interface ManagerState {
    * visible; actions are shown disabled.
    */
   readOnly: boolean;
-  /** Whether the server has answered /api/mode; `readOnly` holds the answer. */
-  modeKnown: boolean;
+  /** When /api/mode last answered (0: never); `readOnly` holds the answer. */
+  modeCheckedAt: number;
   /** Why the last background refresh failed; cleared by the next one. */
   loadError?: string;
   /**
@@ -94,6 +94,8 @@ function describe(error: unknown): string {
 }
 
 let registryInFlight = false;
+/** How often the server is asked again whether it runs the demo. */
+const MODE_RECHECK_MS = 60_000;
 
 function withoutKey(
   map: Record<string, string>,
@@ -109,7 +111,7 @@ export const useStore = create<ManagerState>((set, get) => ({
   loading: false,
   needsLogin: false,
   readOnly: false,
-  modeKnown: false,
+  modeCheckedAt: 0,
   acting: [],
   inlineErrors: {},
 
@@ -129,17 +131,19 @@ export const useStore = create<ManagerState>((set, get) => ({
     set({ loading: true });
     try {
       // A demo shows itself to visitors with no login, so it is asked first.
-      // The answer changes only with a plugin restart, which reloads nothing
-      // here, so it is asked until it arrives once. A failure keeps what is
-      // known: a blip must not drop a demo visitor onto the login prompt. A
-      // server that never answers (an older plugin, no read access without a
-      // login) takes the normal path below.
-      if (!get().modeKnown) {
+      // The answer changes only when the settings restart the plugin, so it
+      // is asked again once a minute rather than on every refresh. A failure
+      // keeps what is known: a blip must not drop a demo visitor onto the
+      // login prompt. A server that never answers (an older plugin, no read
+      // access without a login) takes the normal path below.
+      if (Date.now() - get().modeCheckedAt >= MODE_RECHECK_MS) {
         const demo = await api.mode().then(
           (mode) => mode.demo,
           () => undefined,
         );
-        if (demo !== undefined) set({ readOnly: demo, modeKnown: true });
+        if (demo !== undefined) {
+          set({ readOnly: demo, modeCheckedAt: Date.now() });
+        }
       }
       const demo = get().readOnly;
       const status = demo ? undefined : await loginStatus();

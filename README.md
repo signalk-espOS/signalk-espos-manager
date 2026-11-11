@@ -192,11 +192,14 @@ points, and simply do not appear without internet.
 The `demo` setting is for a public showcase server. The manager then shows
 three virtual devices (a P4 cockpit, a BLE gateway and a Zigbee coordinator)
 instead of the boat's own, contacts no device and downloads no firmware. Their
-versions follow the registry, so one of them always has an update to show.
+versions follow the stable releases in the registry, and the BLE gateway runs
+the one before the newest, so it shows an update whenever the registry lists
+two.
 Everything that would change something is disabled in the web app, and the
 server refuses it with 403, so visitors with read-only access can look around
 safely. The arrow next to a device opens espOS's demo build of the device web
-UI, which runs against an in-browser mock.
+UI, which runs against an in-browser mock, when the build includes it (pinned
+under `espos.uiDemo` in `package.json`); otherwise it opens a placeholder page.
 
 ## Licence
 
