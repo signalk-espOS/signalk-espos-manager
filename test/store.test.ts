@@ -26,6 +26,7 @@ vi.mock("../web/src/api.js", () => {
     ApiError,
     loginStatus: () => Promise.resolve({ loggedIn: true }),
     api: {
+      mode: () => Promise.resolve({ demo: false }),
       fleet: () =>
         Promise.resolve({ summary: { total: 0 }, devices: [], warnings: [] }),
       mirror: () => Promise.resolve({}),

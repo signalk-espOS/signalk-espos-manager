@@ -10,6 +10,9 @@
 
 const PLUGIN_BASE = "/plugins/signalk-espos-manager/api";
 
+/** Said beside every action a demo server refuses. */
+export const DEMO_TITLE = "Not available in the demo";
+
 export class ApiError extends Error {
   constructor(
     message: string,
@@ -252,6 +255,7 @@ export interface JobsDto {
 }
 
 export const api = {
+  mode: () => call<{ demo: boolean }>("/mode"),
   fleet: () => call<FleetDto>("/fleet"),
   device: (id: string) => call<DeviceDto>(`/fleet/${encodeURIComponent(id)}`),
   available: (id: string) =>

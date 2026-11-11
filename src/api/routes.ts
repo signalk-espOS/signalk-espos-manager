@@ -39,6 +39,9 @@ export interface PluginRouter {
   access?(level: "readonly" | "readwrite"): PluginRouter;
 }
 
+/** What a refused write says in demo mode. */
+export const DEMO_REFUSAL = "Not available in the demo";
+
 function errorMessage(error: unknown): string {
   if (!(error instanceof Error)) return String(error);
   // Node's fetch reports every network failure as "fetch failed" and keeps
@@ -67,6 +70,31 @@ export function registerRoutes(
 
   const readonly =
     typeof router.access === "function" ? router.access("readonly") : router;
+
+  // Every route that changes something. In demo mode each is refused here,
+  // administrators included: the page's disabled buttons are a courtesy, this
+  // is the lock.
+  const refuseInDemo =
+    (handler: Handler): Handler =>
+    (req, res) => {
+      if (getService().isDemo) {
+        return res.status(403).json({ error: DEMO_REFUSAL });
+      }
+      return handler(req, res);
+    };
+  const writes = {
+    post: (path: string, handler: Handler) =>
+      router.post(path, refuseInDemo(handler)),
+    delete: (path: string, handler: Handler) =>
+      router.delete(path, refuseInDemo(handler)),
+  };
+
+  // GET /api/mode — whether this is a demo. Read before the login check, so a
+  // visitor to a demo server sees the demo instead of a login prompt. Not
+  // guarded: a stopped plugin is simply not a demo.
+  readonly.get("/api/mode", (_req, res) =>
+    res.json({ demo: getService().isDemo }),
+  );
 
   // GET /api/fleet — the device list behind the Fleet page.
   readonly.get(
@@ -110,7 +138,7 @@ export function registerRoutes(
   );
 
   // POST /api/discovery/rescan — re-query mDNS and poll now.
-  router.post(
+  writes.post(
     "/api/discovery/rescan",
     guard((_req, res) => {
       void (async () => {
@@ -125,7 +153,7 @@ export function registerRoutes(
   );
 
   // POST /api/fleet/:id/key — store a key for one device and try it once.
-  router.post(
+  writes.post(
     "/api/fleet/:id/key",
     guard((req, res) => {
       void (async () => {
@@ -168,7 +196,7 @@ export function registerRoutes(
 
   // POST /api/fleet-key — generate a fleet key ({generate: true}) or set a
   // given one ({key}), moving the devices that use the old one along.
-  router.post(
+  writes.post(
     "/api/fleet-key",
     guard((req, res) => {
       void (async () => {
@@ -210,7 +238,7 @@ export function registerRoutes(
 
   // DELETE /api/fleet-key — stop using a fleet key. Devices that used it keep
   // it as their own key; none is opened.
-  router.delete(
+  writes.delete(
     "/api/fleet-key",
     guard((req, res) => {
       void (async () => {
@@ -319,7 +347,7 @@ export function registerRoutes(
   );
 
   // POST /api/registry/refresh — re-read the registry now.
-  router.post(
+  writes.post(
     "/api/registry/refresh",
     guard((_req, res) => {
       void (async () => {
@@ -406,7 +434,7 @@ export function registerRoutes(
   );
 
   // POST /api/fleet/:id/configure-ota — point a device at this server.
-  router.post(
+  writes.post(
     "/api/fleet/:id/configure-ota",
     guard((req, res) => {
       void (async () => {
@@ -533,7 +561,7 @@ export function registerRoutes(
   );
 
   // POST /api/jobs/resume — continue a queue paused by a failure.
-  router.post(
+  writes.post(
     "/api/jobs/resume",
     guard((_req, res) => {
       const orch = getService().getOrchestrator();
@@ -547,7 +575,7 @@ export function registerRoutes(
   );
 
   // POST /api/fleet/:id/update — mirror the firmware, then install it.
-  router.post(
+  writes.post(
     "/api/fleet/:id/update",
     guard((req, res) => {
       void (async () => {
@@ -573,7 +601,7 @@ export function registerRoutes(
   );
 
   // DELETE /api/fleet/:id/job — drop a queued update.
-  router.delete(
+  writes.delete(
     "/api/fleet/:id/job",
     guard((req, res) => {
       const id = req.params?.id ?? "";
@@ -587,7 +615,7 @@ export function registerRoutes(
   );
 
   // POST /api/fleet/:id/confirm — accept a pending image.
-  router.post(
+  writes.post(
     "/api/fleet/:id/confirm",
     guard((req, res) => {
       void (async () => {
@@ -607,7 +635,7 @@ export function registerRoutes(
   );
 
   // POST /api/fleet/:id/rollback — go back to the previous image.
-  router.post(
+  writes.post(
     "/api/fleet/:id/rollback",
     guard((req, res) => {
       void (async () => {
@@ -648,7 +676,7 @@ export function registerRoutes(
   );
 
   // POST /api/fleet/:id/coprocessor — flash the radio co-processor.
-  router.post(
+  writes.post(
     "/api/fleet/:id/coprocessor",
     guard((req, res) => {
       void (async () => {
@@ -669,7 +697,7 @@ export function registerRoutes(
   );
 
   // DELETE /api/fleet/:id — forget a device and its key.
-  router.delete(
+  writes.delete(
     "/api/fleet/:id",
     guard((req, res) => {
       void (async () => {

@@ -46,6 +46,11 @@ interface ManagerState {
   loading: boolean;
   /** Set when the API says we are not an administrator. */
   needsLogin: boolean;
+  /**
+   * A demo server: virtual devices, every action refused. Everything stays
+   * visible; actions are shown disabled.
+   */
+  readOnly: boolean;
   /** Why the last background refresh failed; cleared by the next one. */
   loadError?: string;
   /**
@@ -101,6 +106,7 @@ export const useStore = create<ManagerState>((set, get) => ({
   available: {},
   loading: false,
   needsLogin: false,
+  readOnly: false,
   acting: [],
   inlineErrors: {},
 
@@ -119,8 +125,16 @@ export const useStore = create<ManagerState>((set, get) => ({
   refresh: async () => {
     set({ loading: true });
     try {
-      const status = await loginStatus();
-      if (!status.loggedIn) {
+      // A demo shows itself to visitors with no login, so it is asked first.
+      // Anything but a yes (an older plugin, a server that lets nobody read
+      // without a login) is the normal path below.
+      const demo = await api.mode().then(
+        (mode) => mode.demo,
+        () => false,
+      );
+      set({ readOnly: demo });
+      const status = demo ? undefined : await loginStatus();
+      if (status !== undefined && !status.loggedIn) {
         // Not an error: the webapp is reachable without a login by design.
         set({ needsLogin: true, loading: false });
         return;
@@ -204,6 +218,9 @@ export const useStore = create<ManagerState>((set, get) => ({
 
   /** Run an action, then refresh — with the outcome shown either way. */
   act: async (what, fn, options) => {
+    // The server refuses it anyway; this keeps a stray click from showing
+    // as a failure.
+    if (get().readOnly) return;
     const key = options?.key ?? what;
     set((state) => ({
       loading: true,

@@ -187,6 +187,17 @@ anywhere. With the mirror enabled, devices never contact the internet at all.
 Board photos are loaded by your browser from wherever the registry's catalogue
 points, and simply do not appear without internet.
 
+## Demo mode
+
+The `demo` setting is for a public showcase server. The manager then shows
+three virtual devices (a P4 cockpit, a BLE gateway and a Zigbee coordinator)
+instead of the boat's own, contacts no device and downloads no firmware. Their
+versions follow the registry, so one of them always has an update to show.
+Everything that would change something is disabled in the web app, and the
+server refuses it with 403, so visitors with read-only access can look around
+safely. The arrow next to a device opens espOS's demo build of the device web
+UI, which runs against an in-browser mock.
+
 ## Licence
 
 Apache-2.0. See [LICENSE](LICENSE).

@@ -1,6 +1,7 @@
 import { api, isJobFinished, type DeviceDto } from "../api.js";
-import { deviceUrl } from "../deviceUrl.js";
+import { demoDeviceUrl, deviceUrl } from "../deviceUrl.js";
 import { useStore } from "../store.js";
+import { useLock } from "../lock.js";
 import { BoardPhoto } from "./BoardPhoto.js";
 import { FleetKeyCard } from "./FleetKey.js";
 
@@ -35,7 +36,8 @@ function authNote(device: DeviceDto): string | undefined {
 }
 
 export function FleetPage() {
-  const { fleet, mirror, jobs, go, act, refresh } = useStore();
+  const { fleet, mirror, jobs, go, act, refresh, readOnly } = useStore();
+  const lock = useLock();
 
   if (fleet === undefined) {
     return <p class="muted">Looking for espOS devices…</p>;
@@ -50,7 +52,10 @@ export function FleetPage() {
             Devices announce themselves over mDNS. If one is on a different
             network segment, add its address under Plugin Config.
           </p>
-          <button onClick={() => void act("Rescan", () => api.rescan())}>
+          <button
+            {...lock()}
+            onClick={() => void act("Rescan", () => api.rescan())}
+          >
             Look again
           </button>
         </div>
@@ -73,7 +78,10 @@ export function FleetPage() {
             firmware not mirrored locally
           </span>
         )}
-        <button onClick={() => void act("Rescan", () => api.rescan())}>
+        <button
+          {...lock()}
+          onClick={() => void act("Rescan", () => api.rescan())}
+        >
           Look again
         </button>
       </div>
@@ -82,7 +90,10 @@ export function FleetPage() {
         <div class="card warn">
           <strong>Updates are paused.</strong> {jobs.pausedReason}
           <div>
-            <button onClick={() => void act("Resume", () => api.resumeJobs())}>
+            <button
+              {...lock()}
+              onClick={() => void act("Resume", () => api.resumeJobs())}
+            >
               Continue anyway
             </button>
           </div>
@@ -183,7 +194,11 @@ export function FleetPage() {
               {device.addresses[0] !== undefined && (
                 <a
                   class="device-open"
-                  href={deviceUrl(device.addresses[0], device.port)}
+                  href={
+                    readOnly
+                      ? demoDeviceUrl(device.app, device.version)
+                      : deviceUrl(device.addresses[0], device.port)
+                  }
                   target="_blank"
                   rel="noreferrer"
                   title="Open this device's own web UI"

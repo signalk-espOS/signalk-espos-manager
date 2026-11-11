@@ -19,7 +19,7 @@
     "LICENSE"
   ],
   "scripts": {
-    "build": "tsc && vite build --logLevel error",
+    "build": "tsc && vite build --logLevel error && node scripts/device-demo.mjs",
     "test": "npm run typecheck:test && npm run typecheck:web && vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
@@ -84,5 +84,8 @@
     "vite": "^8.3.0",
     "vitest": "^4.1.10",
     "zustand": "^5.0.15"
+  },
+  "espos": {
+    "uiDemo": null
   }
 }

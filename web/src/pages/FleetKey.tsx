@@ -1,6 +1,7 @@
 import { useEffect, useState } from "preact/hooks";
 import { api, type FleetKeyChangeDto } from "../api.js";
 import { useStore } from "../store.js";
+import { useLock } from "../lock.js";
 
 const ACT_KEY = "fleet-key";
 
@@ -47,6 +48,7 @@ export function FleetKeyCard() {
   useEffect(() => setConfirmRemove(false), [status?.set, status?.revision]);
   if (status === undefined) return null;
   const busy = acting.includes(ACT_KEY);
+  const lock = useLock();
 
   const run = (
     what: string,
@@ -96,7 +98,7 @@ export function FleetKeyCard() {
 
       <div class="button-row">
         <button
-          disabled={busy}
+          {...lock(busy)}
           onClick={() =>
             void run(
               status.set ? "Replace the fleet key" : "Generate a fleet key",
@@ -107,7 +109,7 @@ export function FleetKeyCard() {
           {status.set ? "Generate a new key" : "Generate a key"}
         </button>
         <button
-          disabled={busy}
+          {...lock(busy)}
           onClick={() => {
             setConfirmRemove(false);
             setEditing(!editing);
@@ -117,7 +119,7 @@ export function FleetKeyCard() {
         </button>
         {status.set && !confirmRemove && (
           <button
-            disabled={busy}
+            {...lock(busy)}
             onClick={() => {
               setAskedRevision(status.revision);
               setConfirmRemove(true);
@@ -136,7 +138,7 @@ export function FleetKeyCard() {
           </p>
           <div class="button-row">
             <button
-              disabled={busy}
+              {...lock(busy)}
               onClick={() => {
                 void run(
                   "Remove the fleet key",
@@ -147,7 +149,7 @@ export function FleetKeyCard() {
             >
               Remove the fleet key
             </button>
-            <button disabled={busy} onClick={() => setConfirmRemove(false)}>
+            <button {...lock(busy)} onClick={() => setConfirmRemove(false)}>
               Keep it
             </button>
           </div>
@@ -160,11 +162,12 @@ export function FleetKeyCard() {
             type="password"
             value={own}
             placeholder="8 to 64 characters"
+            {...lock()}
             autocomplete="new-password"
             onInput={(e) => setOwn((e.target as HTMLInputElement).value)}
           />
           <button
-            disabled={busy || own.trim() === ""}
+            {...lock(busy || own.trim() === "")}
             onClick={() =>
               void run("Set the fleet key", () => api.setFleetKey(own.trim()))
             }

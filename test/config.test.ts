@@ -48,10 +48,11 @@ describe("defaults", () => {
     // missing section and every partial config fails validation wholesale.
     const properties = (
       SettingsSchema as unknown as {
-        properties: Record<string, { default?: unknown }>;
+        properties: Record<string, { type?: string; default?: unknown }>;
       }
     ).properties;
     for (const [name, section] of Object.entries(properties)) {
+      if (section.type !== "object") continue;
       expect(section.default, `${name} needs default: {}`).toEqual({});
     }
   });
