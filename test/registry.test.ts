@@ -934,3 +934,42 @@ describe("manifestBoardId", () => {
     ).toBeUndefined();
   });
 });
+
+describe("parseIndex lists", () => {
+  it("drops boards and releases it cannot walk, keeping the project", () => {
+    const parsed = parseIndex({
+      projects: [
+        {
+          id: "a",
+          app: "a",
+          targets: ["esp32c5"],
+          boards: {},
+          releases: "none",
+        },
+        {
+          id: "b",
+          app: "b",
+          targets: ["esp32c5"],
+          boards: [null, { id: "x" }, { id: "y", target: "esp32c5" }],
+          releases: [
+            { version: "1.0.0", channel: "stable", builds: {} },
+            { version: 2, channel: "stable" },
+          ],
+        },
+        { id: "c", app: "c", targets: [] },
+      ],
+    });
+    const [a, b, c] = parsed.projects;
+    expect(a?.boards).toEqual([]);
+    expect(a?.releases).toEqual([]);
+    expect(b?.boards?.map((board) => [board.id, board.name])).toEqual([
+      ["y", "y"],
+    ]);
+    expect(b?.releases).toMatchObject([
+      { version: "1.0.0", tag: "1.0.0", builds: [] },
+    ]);
+    // Absent stays absent: an entry without boards is not one with none.
+    expect(c?.boards).toBeUndefined();
+    expect(c?.releases).toBeUndefined();
+  });
+});

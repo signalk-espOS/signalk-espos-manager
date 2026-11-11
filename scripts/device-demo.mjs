@@ -7,7 +7,9 @@
  * that were reviewed. `ESPOS_UI_DEMO_DIR` copies a local `ui/dist-demo`
  * instead, for trying an espOS change. With neither, a placeholder page says
  * the demo is not in this build: the plugin works without it, only the demo
- * arrow has nothing to show.
+ * arrow has nothing to show. An offline build outside CI falls back to that
+ * placeholder too, so working on the plugin never needs GitHub; in CI, where
+ * the published package is built, a failed download fails the build.
  *
  * It reports on stderr: `npm pack --json` runs the build through `prepare`,
  * and anything on stdout would break the JSON it prints.
@@ -39,12 +41,7 @@ if (local !== undefined && local !== "") {
   cpSync(local, out, { recursive: true });
   console.error(`device-demo: copied ${local}`);
 } else if (pin == null) {
-  writeFileSync(
-    join(out, "index.html"),
-    "<!doctype html><meta charset=utf-8><title>espOS</title>" +
-      "<p>The device demo is not part of this build.</p>\n",
-  );
-  console.error("device-demo: none pinned, placeholder written");
+  placeholder("none pinned");
 } else {
   const { version, sha256 } = pin;
   if (!/^\d+\.\d+\.\d+$/.test(version) || !/^[0-9a-f]{64}$/.test(sha256)) {
@@ -52,10 +49,18 @@ if (local !== undefined && local !== "") {
   }
   const name = `espos-ui-demo-${version}.tar.gz`;
   const url = `https://github.com/signalk-espOS/espOS/releases/download/v${version}/${name}`;
-  const response = await fetch(url);
-  if (!response.ok)
-    throw new Error(`device-demo: ${url}: HTTP ${response.status}`);
-  const bytes = Buffer.from(await response.arrayBuffer());
+  let bytes;
+  try {
+    const response = await fetch(url);
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    bytes = Buffer.from(await response.arrayBuffer());
+  } catch (error) {
+    if (process.env.CI) throw new Error(`device-demo: ${url}: ${error}`);
+    placeholder(`${url} unreachable (${error})`);
+    process.exit(0);
+  }
+  // A download that arrives but differs is never replaced by a placeholder:
+  // it is not an offline build, it is the wrong bytes.
   const got = createHash("sha256").update(bytes).digest("hex");
   if (got !== sha256) {
     throw new Error(`device-demo: ${name} has sha256 ${got}, pinned ${sha256}`);
@@ -68,4 +73,13 @@ if (local !== undefined && local !== "") {
     rmSync(archive, { force: true });
   }
   console.error(`device-demo: espOS ${version}`);
+}
+
+function placeholder(why) {
+  writeFileSync(
+    join(out, "index.html"),
+    "<!doctype html><meta charset=utf-8><title>espOS</title>" +
+      "<p>The device demo is not part of this build.</p>\n",
+  );
+  console.error(`device-demo: ${why}, placeholder written`);
 }

@@ -15,10 +15,14 @@ import { createHash, randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { mergeIndexes } from "./resolve.js";
+import type { Channel } from "../types.js";
 import type {
   HardwareBoard,
+  RegistryBoard,
+  RegistryBuild,
   RegistryIndex,
   RegistryProject,
+  RegistryRelease,
   UseCase,
 } from "./types.js";
 
@@ -98,6 +102,8 @@ export function parseIndex(raw: unknown): RegistryIndex {
       targets: project.targets.filter(
         (t): t is string => typeof t === "string",
       ),
+      boards: parseBoards(project.boards),
+      releases: parseReleases(project.releases),
     });
   }
   return {
@@ -116,6 +122,52 @@ function records(raw: unknown): Record<string, unknown>[] {
     (entry): entry is Record<string, unknown> =>
       typeof entry === "object" && entry !== null,
   );
+}
+
+// Every consumer filters and indexes these lists, so a shape the code cannot
+// walk is dropped here, once, rather than guarded wherever it is read. A board
+// without an id and a target can match nothing, so it is never a guess.
+function parseBoards(raw: unknown): RegistryBoard[] | undefined {
+  if (raw === undefined) return undefined;
+  return records(raw).flatMap((board) => {
+    if (typeof board.id !== "string" || typeof board.target !== "string") {
+      return [];
+    }
+    return [
+      {
+        ...(board as unknown as RegistryBoard),
+        id: board.id,
+        target: board.target,
+        name: typeof board.name === "string" ? board.name : board.id,
+        reportedAs: optionalString(board.reportedAs),
+        runsOn: Array.isArray(board.runsOn) ? strings(board.runsOn) : undefined,
+      },
+    ];
+  });
+}
+
+function parseReleases(raw: unknown): RegistryRelease[] | undefined {
+  if (raw === undefined) return undefined;
+  return records(raw).flatMap((release) => {
+    if (
+      typeof release.version !== "string" ||
+      typeof release.channel !== "string"
+    ) {
+      return [];
+    }
+    return [
+      {
+        ...(release as unknown as RegistryRelease),
+        version: release.version,
+        tag: typeof release.tag === "string" ? release.tag : release.version,
+        channel: release.channel as Channel,
+        builds: records(release.builds).filter(
+          (build): build is Record<string, unknown> & RegistryBuild =>
+            typeof build.target === "string",
+        ),
+      },
+    ];
+  });
 }
 
 function optionalString(value: unknown): string | undefined {

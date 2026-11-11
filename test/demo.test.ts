@@ -177,6 +177,25 @@ describe("demo fixtures", () => {
   });
 
   it("take the board from the index they are built from", () => {
+    const cockpit = DEMO_DEVICES[0]!;
+    const boards = [
+      {
+        id: "waveshare-p4-7b",
+        target: "esp32p4",
+        name: "7B",
+        reportedAs: cockpit.board,
+      },
+      { id: "other-p4", target: "esp32p4", name: "Other" },
+    ];
+    const named = {
+      schema: 1,
+      projects: [{ ...INDEX.projects[0]!, boards }],
+    } as RegistryIndex;
+    expect(demoBoardId(named, cockpit)).toBe("waveshare-p4-7b");
+    const path = demoRecord(cockpit, named, "waveshare-p4-7b", 0, 1000).snapshot
+      ?.otaConfig?.manifestPath;
+    expect(path).toContain("waveshare-p4-7b");
+
     const broken = {
       schema: 1,
       projects: [{ ...INDEX.projects[0]!, boards: {} }],
