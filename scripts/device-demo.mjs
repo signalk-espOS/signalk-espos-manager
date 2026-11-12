@@ -24,7 +24,6 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -66,13 +65,10 @@ if (local !== undefined && local !== "") {
   if (got !== sha256) {
     throw new Error(`device-demo: ${name} has sha256 ${got}, pinned ${sha256}`);
   }
-  const archive = join(tmpdir(), `${name}.${process.pid}`);
-  writeFileSync(archive, bytes);
-  try {
-    execFileSync("tar", ["-xzf", archive, "-C", out]);
-  } finally {
-    rmSync(archive, { force: true });
-  }
+  // Fed on stdin and unpacked in `out` as the working directory: GNU tar on
+  // the Windows runners reads a `C:\...` archive path as host:path and tries
+  // a remote tape, and no path at all leaves nothing to misread.
+  execFileSync("tar", ["-xzf", "-"], { cwd: out, input: bytes });
   console.error(`device-demo: espOS ${version}`);
 }
 
