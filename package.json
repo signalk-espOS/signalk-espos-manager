@@ -1,6 +1,6 @@
 {
   "name": "signalk-espos-manager",
-  "version": "0.9.0",
+  "version": "0.9.1",
   "description": "Finds the espOS devices on your boat, keeps their firmware up to date over the air and flashes new boards from the browser.",
   "type": "module",
   "main": "dist/index.js",
