@@ -1,5 +1,5 @@
 /**
- * Chip facts, read out of esptool-js 0.6.1 rather than assumed.
+ * Chip facts, read out of esptool-js 0.7.1 rather than assumed.
  *
  * Two of these decide whether a signed firmware image survives being written,
  * so both were checked against the library's own source and its inheritance
@@ -22,10 +22,14 @@ export const CHIP_NAME_TO_TARGET: Readonly<Record<string, Target>> = {
   "ESP32-C5": "esp32c5",
   "ESP32-C6": "esp32c6",
   "ESP32-C61": "esp32c61",
+  "ESP32-E22": "esp32e22",
   "ESP32-H2": "esp32h2",
+  "ESP32-H21": "esp32h21",
+  "ESP32-H4": "esp32h4",
   "ESP32-P4": "esp32p4",
   "ESP32-S2": "esp32s2",
   "ESP32-S3": "esp32s3",
+  "ESP32-S31": "esp32s31",
   ESP8266: "esp8266",
 };
 
@@ -37,9 +41,10 @@ export const CHIP_NAME_TO_TARGET: Readonly<Record<string, Target>> = {
  * `esp32c6.js` sets 0 while extending ESP32C3ROM, `esp32c5.js` sets 0x2000
  * while extending ESP32C6ROM, and `esp32c61.js` declares nothing at all.
  *
- * Six of the ten have offset 0, which matters: `_updateImageFlashParams()`
- * returns early only when the write address differs from this offset, so a
- * merged image written at 0x0 goes through the rewrite path on most chips.
+ * Eight of the fourteen have offset 0, which matters:
+ * `_updateImageFlashParams()` returns early only when the write address
+ * differs from this offset, so a merged image written at 0x0 goes through the
+ * rewrite path on most chips.
  * The `keep` flash parameters are what actually prevent mutation there.
  */
 export const BOOTLOADER_FLASH_OFFSET: Readonly<Record<Target, number>> = {
@@ -49,10 +54,14 @@ export const BOOTLOADER_FLASH_OFFSET: Readonly<Record<Target, number>> = {
   esp32c5: 0x2000,
   esp32c6: 0x0,
   esp32c61: 0x0,
+  esp32e22: 0x0,
   esp32h2: 0x0,
+  esp32h21: 0x0,
+  esp32h4: 0x2000,
   esp32p4: 0x2000,
   esp32s2: 0x1000,
   esp32s3: 0x0,
+  esp32s31: 0x2000,
   esp8266: 0x0,
 };
 
@@ -83,7 +92,7 @@ export function chipNameForTarget(target: Target): string {
 /**
  * Flash size by the JEDEC id's size byte (bits 16-23 of `readFlashId()`).
  *
- * Transcribed from esptool-js 0.6.1's own `DETECTED_FLASH_SIZES`
+ * Transcribed from esptool-js 0.7.1's own `DETECTED_FLASH_SIZES`
  * (lib/esploader.js) so the two cannot disagree about what an id means.
  *
  * The reason we decode it ourselves rather than calling `detectFlashSize()`:
@@ -139,34 +148,3 @@ export const FLASH_SIZE_BY_ID: Readonly<Record<number, number>> = {
 export function isFlashId(jedec: number): boolean {
   return jedec !== 0x000000 && jedec !== 0xffffff;
 }
-
-/**
- * Correct `SPI_REG_BASE` for chips where esptool-js has the wrong one.
- *
- * The flash controller is SPI1. esptool-js's `ESP32C6ROM` sets
- * `SPI_REG_BASE = 0x60002000`, which is SPI0, and never applies the override
- * that Python esptool does (`esptool/targets/esp32c6.py`:
- * `SPI_REG_BASE = 0x60003000`). `ESP32C5ROM extends ESP32C6ROM` in both tools,
- * so the C5 inherits the wrong value too.
- *
- * The visible symptom is `readFlashId()` returning 0x000000 -- reading a
- * register block that is not the flash controller -- so the flash size falls
- * back to "4MB" and correct firmware looks too big for the board. Measured on a
- * Waveshare ESP32-C5: Chrome read 0x000000, Python esptool over the same port
- * read 0x184046 (16 MB).
- *
- * Verified by comparing the two implementations target by target:
- *
- *            esptool-js    python esptool
- *   esp32c3  0x60002000    0x60002000     (agree)
- *   esp32c6  0x60002000    0x60003000     (differ)
- *   esp32c5  inherits c6   inherits c6
- *
- * Applied to the loader's chip object after connecting. Remove an entry once
- * the installed esptool-js carries the right value -- the test beside this
- * table fails when that happens, rather than leaving a stale patch in place.
- */
-export const SPI_REG_BASE_FIXUP: Readonly<Partial<Record<Target, number>>> = {
-  esp32c5: 0x60003000,
-  esp32c6: 0x60003000,
-};

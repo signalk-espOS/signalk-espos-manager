@@ -24,11 +24,15 @@ import type {
 /** Known IDF targets, longest first so `esp32c6` wins over `esp32`. */
 const KNOWN_TARGETS: readonly Target[] = [
   "esp32c61",
+  "esp32h21",
+  "esp32s31",
+  "esp32e22",
   "esp32c2",
   "esp32c3",
   "esp32c5",
   "esp32c6",
   "esp32h2",
+  "esp32h4",
   "esp32p4",
   "esp32s2",
   "esp32s3",
