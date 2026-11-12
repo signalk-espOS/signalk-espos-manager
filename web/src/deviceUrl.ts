@@ -1,4 +1,20 @@
 /**
+ * On a demo server, the device's web UI as the virtual device it is: espOS's
+ * demo build, shipped in this package, picked by the firmware's app name
+ * (`ble_gateway` opens the `ble-gateway` device) and showing the version
+ * listed here.
+ */
+export function demoDeviceUrl(
+  app: string | undefined,
+  version: string | undefined,
+): string {
+  const query = new URLSearchParams();
+  if (app !== undefined) query.set("device", app.replace(/_/g, "-"));
+  if (version !== undefined) query.set("version", version);
+  return `/signalk-espos-manager/device-demo/?${query.toString()}`;
+}
+
+/**
  * URL of a device's own web UI.
  *
  * A bare IPv6 address must be bracketed or the colons read as a port separator

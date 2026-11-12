@@ -1,6 +1,7 @@
 import { useState } from "preact/hooks";
 import { api, isJobFinished } from "../api.js";
 import { useStore } from "../store.js";
+import { useLock } from "../lock.js";
 import { BoardPhoto } from "./BoardPhoto.js";
 import { CoprocessorCard } from "./Coprocessor.js";
 
@@ -46,6 +47,7 @@ export function DevicePage() {
     acting,
     inlineErrors,
   } = useStore();
+  const lock = useLock();
   const [key, setKey] = useState("");
 
   const device = fleet?.devices.find((d) => d.id === selectedDevice);
@@ -247,12 +249,13 @@ export function DevicePage() {
           </p>
           <input
             type="password"
+            {...lock()}
             value={key}
             placeholder="Access key"
             onInput={(e) => setKey((e.target as HTMLInputElement).value)}
           />
           <button
-            disabled={key.trim() === ""}
+            {...lock(key.trim() === "")}
             onClick={() =>
               void act("Save key", async () => {
                 await api.setKey(device.id, key.trim());
@@ -270,7 +273,7 @@ export function DevicePage() {
           <h3>Not set up for updates</h3>
           <p class="muted small">{device.otaRepairReason}</p>
           <button
-            disabled={acting.includes(fixOtaKey)}
+            {...lock(acting.includes(fixOtaKey))}
             onClick={() =>
               void act(
                 `Point ${device.hostname ?? device.id} at the server`,
@@ -322,6 +325,7 @@ export function DevicePage() {
             )}
             {job.state === "queued" && (
               <button
+                {...lock()}
                 onClick={() =>
                   void act("Cancel", () => api.cancelJob(device.id))
                 }
@@ -367,6 +371,7 @@ export function DevicePage() {
                   </p>
                 )}
                 <button
+                  {...lock()}
                   onClick={() =>
                     void act(`Install ${offer.build?.version ?? ""}`, () =>
                       api.update(device.id, offer.needsConfirmation === true),
@@ -391,7 +396,7 @@ export function DevicePage() {
               : "Firmware list not fetched yet. "}
             <button
               class="link"
-              disabled={acting.includes(checkKey)}
+              {...lock(acting.includes(checkKey))}
               onClick={() =>
                 void act("Check for updates", refreshRegistry, {
                   key: checkKey,
@@ -417,6 +422,7 @@ export function DevicePage() {
             previous one. The device does both on its own when it needs to.
           </p>
           <button
+            {...lock()}
             onClick={() =>
               void act("Confirm image", () => api.confirm(device.id))
             }
@@ -424,11 +430,13 @@ export function DevicePage() {
             Confirm current image
           </button>
           <button
+            {...lock()}
             onClick={() => void act("Roll back", () => api.rollback(device.id))}
           >
             Roll back
           </button>
           <button
+            {...lock()}
             onClick={() =>
               void act("Forget device", async () => {
                 await api.forget(device.id);

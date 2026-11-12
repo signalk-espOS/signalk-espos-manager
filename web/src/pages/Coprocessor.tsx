@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "preact/hooks";
 import { api, ApiError, type CoprocessorDto, type DeviceDto } from "../api.js";
 import { useStore } from "../store.js";
+import { useLock } from "../lock.js";
 
 const RUNNING: readonly CoprocessorDto["state"][] = [
   "downloading",
@@ -30,6 +31,7 @@ const PHASE: Record<CoprocessorDto["state"], string> = {
 export function CoprocessorCard({ device }: { device: DeviceDto }) {
   // Mounted with key={device.id}, so all of this belongs to one device.
   const { act, acting, inlineErrors } = useStore();
+  const lock = useLock();
   const [status, setStatus] = useState<CoprocessorDto>();
   const [problem, setProblem] = useState<string>();
   const [unsupported, setUnsupported] = useState(false);
@@ -149,10 +151,10 @@ export function CoprocessorCard({ device }: { device: DeviceDto }) {
             </p>
           )}
           <button
-            disabled={
+            {...lock(
               (status === undefined && problem === undefined) ||
-              acting.includes(key)
-            }
+                acting.includes(key),
+            )}
             onClick={() =>
               void act(
                 "Start the radio co-processor update",

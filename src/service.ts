@@ -22,7 +22,7 @@ import {
 } from "./registry/client.js";
 import { OtaOrchestrator } from "./ota/orchestrator.js";
 import type { JobView } from "./ota/job.js";
-import type { CoprocessorUpdateStatus, Target } from "./types.js";
+import type { CoprocessorUpdateStatus, DeviceRecord, Target } from "./types.js";
 import { DeviceClient, DeviceHttpError } from "./device/client.js";
 import { fleetKeyUsable, provisionFleetKey } from "./device/provision.js";
 import {
@@ -38,7 +38,13 @@ import {
   projectForApp,
 } from "./registry/resolve.js";
 import { hardwareFor, type DeviceHardware } from "./registry/hardware.js";
-import type { RegistryProject } from "./registry/types.js";
+import {
+  DEMO_DEVICES,
+  demoBoardId,
+  demoDevice,
+  demoRecord,
+} from "./demo/fixtures.js";
+import type { RegistryIndex, RegistryProject } from "./registry/types.js";
 import {
   filenameFromUrl,
   firmwareUrlFor,
@@ -85,6 +91,7 @@ export class ManagerService {
   private manifestRefresh?: Promise<void>;
   private orchestrator?: OtaOrchestrator;
   private dayNight?: DayNightPublisher;
+  private demoTimer?: ReturnType<typeof setInterval>;
   private mirror: { mode: MirrorMode; reason?: string } = {
     mode: "upstream",
     reason: "not started",
@@ -94,6 +101,14 @@ export class ManagerService {
 
   get isRunning(): boolean {
     return this.started;
+  }
+
+  /**
+   * Demo mode: virtual devices, nothing written. Routes refuse every write
+   * while this is true, and the service itself contacts no device.
+   */
+  get isDemo(): boolean {
+    return this.started && this.settings?.demo === true;
   }
 
   getSettings(): ManagerSettings | undefined {
@@ -139,6 +154,18 @@ export class ManagerService {
         },
       });
 
+      if (settings.demo) {
+        // No discovery, no poll, no mirror, no provisioning: the fleet is the
+        // demo's fixtures and nothing on the network is touched beyond
+        // reading the registry index.
+        this.mirror = {
+          mode: "upstream",
+          reason: "demo mode: no firmware is downloaded",
+        };
+        this.startDemo();
+        return;
+      }
+
       if (settings.mirror.enabled) {
         await this.startMirror(dataDir, settings);
         this.manifestRefresh = this.refreshManifests();
@@ -174,7 +201,13 @@ export class ManagerService {
   }
 
   async stop(): Promise<void> {
+    const wasDemo = this.isDemo;
     this.started = false;
+    clearInterval(this.demoTimer);
+    this.demoTimer = undefined;
+    // The fixtures must not outlive demo mode: switched off, the list starts
+    // empty and fills from discovery like any other start.
+    if (wasDemo) this.fleet.replaceAll([]);
     this.generation += 1;
     this.provisioning = false;
     this.provisionKeyWarned = false;
@@ -194,6 +227,61 @@ export class ManagerService {
     this.keys = undefined;
     this.store = undefined;
     this.registry = undefined;
+  }
+
+  /**
+   * Fill the fleet with the demo devices and keep them current: their
+   * uptime counts on and their versions follow the registry index.
+   */
+  private startDemo(): void {
+    const generation = this.generation;
+    const startedAt = Date.now();
+    // Whatever a previous non-demo run found is not shown beside fixtures.
+    this.fleet.replaceAll([]);
+    // The fixtures from whatever index is at hand, so the fleet is never empty
+    // while a slow registry is awaited; the fresh index replaces them after.
+    const records = (index: RegistryIndex, now: number): DeviceRecord[] =>
+      DEMO_DEVICES.map((device) =>
+        demoRecord(
+          device,
+          index,
+          demoBoardId(index, device) ?? undefined,
+          startedAt,
+          now,
+        ),
+      );
+    const build = (): void => {
+      const now = Date.now();
+      let fleet: DeviceRecord[];
+      try {
+        fleet = records(
+          this.registryState?.index ?? { schema: 1, projects: [] },
+          now,
+        );
+      } catch (error) {
+        // An index this cannot read still leaves the devices on show, at
+        // the fallback version, and the next refresh tries again.
+        this.app.debug(`demo: registry index unusable: ${String(error)}`);
+        fleet = records({ schema: 1, projects: [] }, now);
+      }
+      this.fleet.replaceAll(fleet);
+      this.fleet.markPolled();
+      this.report();
+    };
+    const seed = async (): Promise<void> => {
+      try {
+        await this.getIndex();
+      } catch (error) {
+        this.app.debug(`demo: registry index unavailable: ${String(error)}`);
+      }
+      if (generation !== this.generation || !this.isDemo) return;
+      build();
+    };
+    build();
+    void seed();
+    this.demoTimer = setInterval(() => {
+      void seed();
+    }, 15_000);
   }
 
   /** Force an immediate mDNS re-query and poll. */
@@ -538,6 +626,8 @@ export class ManagerService {
 
   /** A client for one device, with its key attached when we have one. */
   clientFor(id: string): DeviceClient | undefined {
+    // The demo's addresses are fixtures; no client is ever made for one.
+    if (this.isDemo) return undefined;
     const device = this.fleet.get(id);
     const address = device?.identity.addresses[0];
     if (device === undefined || address === undefined) return undefined;
@@ -711,6 +801,22 @@ export class ManagerService {
     | { ok: true; status: CoprocessorUpdateStatus }
     | { ok: false; status?: number; error: string }
   > {
+    if (this.isDemo) {
+      const device = demoDevice(id);
+      return device?.coprocessor === undefined
+        ? { ok: false, status: 404, error: COPROCESSOR_UNSUPPORTED }
+        : {
+            ok: true,
+            status: {
+              state: "idle",
+              image: {
+                version: device.coprocessor.version,
+                sha256: "",
+                url: "",
+              },
+            },
+          };
+    }
     const client = this.clientFor(id);
     if (client === undefined) {
       return {
@@ -1040,8 +1146,16 @@ export class ManagerService {
   /** Status line plus deltas, after every cycle. */
   private report(): void {
     try {
-      this.app.setPluginStatus(this.fleet.summary());
-      publishFleetDeltas(this.app, PLUGIN_ID, this.fleet.list());
+      this.app.setPluginStatus(
+        this.isDemo
+          ? `demo mode: ${this.fleet.summary()}`
+          : this.fleet.summary(),
+      );
+      // Virtual devices stay out of the server's data model, where they
+      // would read as real ones to every other client.
+      if (!this.isDemo) {
+        publishFleetDeltas(this.app, PLUGIN_ID, this.fleet.list());
+      }
     } catch (error) {
       this.app.debug(`reporting failed: ${String(error)}`);
     }

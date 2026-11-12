@@ -19,7 +19,7 @@
     "LICENSE"
   ],
   "scripts": {
-    "build": "tsc && vite build --logLevel error",
+    "build": "tsc && vite build --logLevel error && node scripts/device-demo.mjs",
     "test": "npm run typecheck:test && npm run typecheck:web && vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
@@ -84,5 +84,11 @@
     "vite": "^8.3.0",
     "vitest": "^5.1.0",
     "zustand": "^5.0.15"
+  },
+  "espos": {
+    "uiDemo": {
+      "version": "0.29.0",
+      "sha256": "9a886c22196fe2e29d734b95a0a39aa0537921dd082355416553a12d758085e9"
+    }
   }
 }

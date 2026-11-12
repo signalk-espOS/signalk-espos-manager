@@ -15,6 +15,7 @@ export function App() {
     refresh,
     loading,
     needsLogin,
+    readOnly,
     loadError,
     error,
     notice,
@@ -83,6 +84,11 @@ export function App() {
         </nav>
       </header>
 
+      {readOnly && (
+        <div class="card notice demo" role="note">
+          Demo: virtual devices, view only.
+        </div>
+      )}
       {error !== undefined && (
         <div class="card error" onClick={dismiss} role="alert">
           {error}

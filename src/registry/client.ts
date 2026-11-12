@@ -15,10 +15,14 @@ import { createHash, randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { mergeIndexes } from "./resolve.js";
+import type { Channel } from "../types.js";
 import type {
   HardwareBoard,
+  RegistryBoard,
+  RegistryBuild,
   RegistryIndex,
   RegistryProject,
+  RegistryRelease,
   UseCase,
 } from "./types.js";
 
@@ -89,6 +93,8 @@ export function parseIndex(raw: unknown): RegistryIndex {
     ) {
       continue;
     }
+    const boards = parseBoards(project.boards);
+    if (boards === null) continue;
     projects.push({
       ...(project as unknown as RegistryProject),
       id,
@@ -98,6 +104,8 @@ export function parseIndex(raw: unknown): RegistryIndex {
       targets: project.targets.filter(
         (t): t is string => typeof t === "string",
       ),
+      boards,
+      releases: parseReleases(project.releases),
     });
   }
   return {
@@ -116,6 +124,58 @@ function records(raw: unknown): Record<string, unknown>[] {
     (entry): entry is Record<string, unknown> =>
       typeof entry === "object" && entry !== null,
   );
+}
+
+// Every consumer filters and indexes these lists, so a shape the code cannot
+// walk is dropped here, once, rather than guarded wherever it is read.
+//
+// A board list is all or nothing. Dropping one unreadable board would leave
+// its chip looking like it has a single board, and a build that names no
+// board would then be offered to a device it was not built for. So a project
+// with any unreadable board is skipped (null), like one without an id.
+function parseBoards(raw: unknown): RegistryBoard[] | undefined | null {
+  if (raw === undefined) return undefined;
+  if (!Array.isArray(raw)) return null;
+  const boards: RegistryBoard[] = [];
+  for (const entry of raw) {
+    if (typeof entry !== "object" || entry === null) return null;
+    const board = entry as Record<string, unknown>;
+    if (typeof board.id !== "string" || typeof board.target !== "string") {
+      return null;
+    }
+    boards.push({
+      ...(board as unknown as RegistryBoard),
+      id: board.id,
+      target: board.target,
+      name: typeof board.name === "string" ? board.name : board.id,
+      reportedAs: optionalString(board.reportedAs),
+      runsOn: Array.isArray(board.runsOn) ? strings(board.runsOn) : undefined,
+    });
+  }
+  return boards;
+}
+
+function parseReleases(raw: unknown): RegistryRelease[] | undefined {
+  if (raw === undefined) return undefined;
+  return records(raw).flatMap((release) => {
+    // An absent channel is stable, as in the registry schema.
+    const channel = release.channel ?? "stable";
+    if (typeof release.version !== "string" || typeof channel !== "string") {
+      return [];
+    }
+    return [
+      {
+        ...(release as unknown as RegistryRelease),
+        version: release.version,
+        tag: typeof release.tag === "string" ? release.tag : release.version,
+        channel: channel as Channel,
+        builds: records(release.builds).filter(
+          (build): build is Record<string, unknown> & RegistryBuild =>
+            typeof build.target === "string",
+        ),
+      },
+    ];
+  });
 }
 
 function optionalString(value: unknown): string | undefined {

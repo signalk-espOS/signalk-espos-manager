@@ -219,6 +219,13 @@ export class FleetState {
     this.notify();
   }
 
+  /** Put these records in place of every device known, as one change. */
+  replaceAll(records: readonly DeviceRecord[]): void {
+    this.devices.clear();
+    for (const record of records) this.devices.set(record.identity.id, record);
+    this.notify();
+  }
+
   forget(id: DeviceId): boolean {
     const removed = this.devices.delete(id);
     if (removed) this.notify();

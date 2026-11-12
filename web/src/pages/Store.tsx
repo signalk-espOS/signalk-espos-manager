@@ -1,4 +1,5 @@
 import { useStore } from "../store.js";
+import { useLock } from "../lock.js";
 
 function bytes(value: number): string {
   if (value < 1024 * 1024) return `${Math.round(value / 1024)} KB`;
@@ -7,6 +8,7 @@ function bytes(value: number): string {
 
 export function StorePage() {
   const { registry, fleet, mirror, act, refreshRegistry } = useStore();
+  const lock = useLock();
 
   if (registry === undefined) {
     return <p class="muted">Loading the firmware list…</p>;
@@ -33,6 +35,7 @@ export function StorePage() {
         </span>
         <span class="spacer" />
         <button
+          {...lock()}
           onClick={() => void act("Refresh firmware list", refreshRegistry)}
         >
           Refresh

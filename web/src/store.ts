@@ -46,6 +46,11 @@ interface ManagerState {
   loading: boolean;
   /** Set when the API says we are not an administrator. */
   needsLogin: boolean;
+  /**
+   * A demo server: virtual devices, every action refused. Everything stays
+   * visible; actions are shown disabled.
+   */
+  readOnly: boolean;
   /** Why the last background refresh failed; cleared by the next one. */
   loadError?: string;
   /**
@@ -101,6 +106,7 @@ export const useStore = create<ManagerState>((set, get) => ({
   available: {},
   loading: false,
   needsLogin: false,
+  readOnly: false,
   acting: [],
   inlineErrors: {},
 
@@ -119,17 +125,31 @@ export const useStore = create<ManagerState>((set, get) => ({
   refresh: async () => {
     set({ loading: true });
     try {
-      const status = await loginStatus();
-      if (!status.loggedIn) {
+      // The fleet says whether this is a demo, so the mode always matches
+      // the devices on screen. A demo needs no login; a visitor without one
+      // still gets its fleet, which is how a demo shows itself to them.
+      const wasDemo = get().readOnly;
+      const status = wasDemo ? undefined : await loginStatus();
+      const loggedOut = status !== undefined && !status.loggedIn;
+      let loaded: [FleetDto, MirrorDto, JobsDto] | undefined;
+      try {
+        loaded = await Promise.all([api.fleet(), api.mirror(), api.jobs()]);
+      } catch (error) {
+        if (!loggedOut) throw error;
+      }
+      if (loaded === undefined || (loggedOut && loaded[0].demo !== true)) {
         // Not an error: the webapp is reachable without a login by design.
         set({ needsLogin: true, loading: false });
         return;
       }
-      const [fleet, mirror, jobs] = await Promise.all([
-        api.fleet(),
-        api.mirror(),
-        api.jobs(),
-      ]);
+      const [fleet, mirror, jobs] = loaded;
+      const demo = fleet.demo === true;
+      if (wasDemo && !demo) {
+        // The demo was switched off: drop the virtual fleet and start over
+        // through the login check before anything is enabled.
+        set({ readOnly: false, fleet: undefined });
+        return get().refresh();
+      }
       // Show the fleet immediately. The registry is a separate, slower fetch
       // over the internet, and awaiting it here delayed the device list behind
       // a request that may take seconds or never finish at all.
@@ -137,6 +157,7 @@ export const useStore = create<ManagerState>((set, get) => ({
         fleet,
         mirror,
         jobs,
+        readOnly: demo,
         needsLogin: false,
         loading: false,
         loadError: undefined,
@@ -204,6 +225,9 @@ export const useStore = create<ManagerState>((set, get) => ({
 
   /** Run an action, then refresh — with the outcome shown either way. */
   act: async (what, fn, options) => {
+    // The server refuses it anyway; this keeps a stray click from showing
+    // as a failure.
+    if (get().readOnly) return;
     const key = options?.key ?? what;
     set((state) => ({
       loading: true,

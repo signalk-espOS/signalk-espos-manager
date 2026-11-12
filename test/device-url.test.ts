@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { deviceUrl } from "../web/src/deviceUrl.js";
+import { demoDeviceUrl, deviceUrl } from "../web/src/deviceUrl.js";
 
 describe("deviceUrl", () => {
   it("omits the default port", () => {
@@ -21,5 +21,16 @@ describe("deviceUrl", () => {
 
   it("leaves a hostname alone", () => {
     expect(deviceUrl("espos-2be9.local", 80)).toBe("http://espos-2be9.local/");
+  });
+});
+
+describe("demoDeviceUrl", () => {
+  it("opens espOS's demo build as the device the app names", () => {
+    expect(demoDeviceUrl("ble_gateway", "1.3.2")).toBe(
+      "/signalk-espos-manager/device-demo/?device=ble-gateway&version=1.3.2",
+    );
+    expect(demoDeviceUrl(undefined, undefined)).toBe(
+      "/signalk-espos-manager/device-demo/?",
+    );
   });
 });

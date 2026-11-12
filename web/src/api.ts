@@ -10,6 +10,9 @@
 
 const PLUGIN_BASE = "/plugins/signalk-espos-manager/api";
 
+/** Said beside every action a demo server refuses. */
+export const DEMO_TITLE = "Not available in the demo";
+
 export class ApiError extends Error {
   constructor(
     message: string,
@@ -134,6 +137,8 @@ export interface FleetDto {
   warnings: string[];
   /** `revision` changes with the key and names it without revealing it. */
   fleetKey?: { set: boolean; autoProvision: boolean; revision?: string };
+  /** A demo server: virtual devices, every change refused. Absent before 0.9. */
+  demo?: boolean;
 }
 
 export interface FleetKeyChangeDto {

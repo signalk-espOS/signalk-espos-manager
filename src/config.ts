@@ -263,6 +263,15 @@ export const DayNightSchema = Type.Object(
 );
 
 export const SettingsSchema = Type.Object({
+  demo: Type.Boolean({
+    title: "Demo mode (virtual devices, read only)",
+    default: false,
+    description:
+      "For a public demonstration server. Shows three virtual espOS devices " +
+      "and refuses every change, also for administrators. Visitors without " +
+      "a login see it when the server allows read-only access. No device " +
+      "on the network is looked for or contacted. Leave off on a boat.",
+  }),
   discovery: DiscoverySchema,
   auth: AuthSchema,
   registry: RegistrySchema,
