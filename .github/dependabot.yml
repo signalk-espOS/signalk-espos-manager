@@ -30,6 +30,12 @@ updates:
       # engines.node and the CI node versions, not on their own.
       - dependency-name: "@types/node"
         update-types: ["version-update:semver-major"]
+      # On 0.x a minor is a breaking release. The flasher writes to boards
+      # through it, and test/chips-vs-library.test.ts fails on each such
+      # change, so a new minor is a deliberate move, not a grouped bump.
+      - dependency-name: "esptool-js"
+        update-types:
+          ["version-update:semver-minor", "version-update:semver-major"]
 
   - package-ecosystem: github-actions
     directory: "/"
