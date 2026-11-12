@@ -17,7 +17,7 @@ jobs:
     # Pinned to the v2.32.0 commit rather than @master: a floating ref lets an
     # upstream change break this repo's CI with no commit here, and the pin is
     # what makes a green run reproducible. Bump it deliberately.
-    uses: SignalK/signalk-server/.github/workflows/plugin-ci.yml@7d96d5230d40b8fec9b7fd093d134fb22b39fad7
+    uses: SignalK/signalk-server/.github/workflows/plugin-ci.yml@0495a4a94acd69443d94498b3b431738c2ba4eff
     with:
       node-versions: '["24", "26"]'
       build-command: "npm run build"
