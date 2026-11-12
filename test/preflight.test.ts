@@ -3,7 +3,7 @@
  *
  * These rules decide whether hardware gets the wrong image, so they are pure
  * and tested without hardware. The chip facts they rest on were read out of
- * esptool-js 0.6.1's own source and inheritance chain, not assumed — see
+ * esptool-js 0.7.1's own source and inheritance chain, not assumed — see
  * web/src/flash/chips.ts.
  */
 

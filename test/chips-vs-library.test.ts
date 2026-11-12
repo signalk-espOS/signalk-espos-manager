@@ -4,9 +4,9 @@
  * chip name would let the wrong image reach a board — so this checks the
  * transcription against the installed library rather than trusting it.
  *
- * It reads the library's source instead of importing it: esptool-js 0.6.1
- * ships extensionless internal imports, which Node's ESM resolver rejects
- * (Vite rewrites them when bundling, so the app itself is unaffected).
+ * It reads the library's source instead of importing it: the constants live
+ * in constructors and are inherited between targets, and the source is where
+ * that chain can be followed.
  */
 
 import { readdirSync, readFileSync } from "node:fs";
@@ -17,7 +17,6 @@ import {
   FLASH_SIZE_BY_ID,
   targetFromChipName,
   isFlashId,
-  SPI_REG_BASE_FIXUP,
 } from "../web/src/flash/chips.js";
 
 const TARGETS = Object.values(CHIP_NAME_TO_TARGET).filter(
@@ -123,7 +122,7 @@ describe("the loader methods we call actually exist", () => {
   it("detectFlashSize returns a string, not a byte count", () => {
     // Returning the string straight into a byte comparison would make every
     // fit check nonsense.
-    expect(dts).toMatch(/detectFlashSize\(\):\s*Promise<string>/);
+    expect(dts).toMatch(/detectFlashSize\(\):\s*Promise<string \| undefined>/);
   });
 });
 
@@ -238,20 +237,13 @@ describe("isFlashId", () => {
 });
 
 /**
- * esptool-js has the wrong SPI flash controller address for the C5/C6.
- *
- * The flash controller is SPI1. esptool-js's ESP32C6ROM sets
- * SPI_REG_BASE = 0x60002000 (SPI0) and never applies the override Python
- * esptool does (0x60003000); ESP32C5ROM extends ESP32C6ROM in both, so the C5
- * inherits it. readFlashId() then reads a register block that is not the flash
- * controller and answers 0x000000, the flash size falls back to "4MB", and
- * correct firmware looks too big for the board.
- *
- * These tests exist to make the workaround self-retiring: when the installed
- * esptool-js carries the right value, the first one fails and the fixup entry
- * should be deleted rather than left to shadow a fixed library.
+ * The flash controller is SPI1. Before 0.7, esptool-js pointed the C5 and C6
+ * at SPI0 (0x60002000): readFlashId() then answered 0x000000, the size fell
+ * back to "4MB" and correct firmware looked too big for the board. Python
+ * esptool has 0x60003000. Guard the library's value so a regression shows up
+ * here, not as a refused write on someone's desk.
  */
-describe("SPI_REG_BASE_FIXUP", () => {
+describe("SPI_REG_BASE in the installed esptool-js", () => {
   const spiBase = (target: string): string | undefined => {
     const source = readFileSync(
       new URL(
@@ -263,27 +255,23 @@ describe("SPI_REG_BASE_FIXUP", () => {
     return /SPI_REG_BASE = (0x[0-9a-f]+)/.exec(source)?.[1];
   };
 
-  it("is still needed: the library still has SPI0 for the c6", () => {
-    // 0x60003000 here means upstream fixed it -> drop the fixup entries.
-    expect(spiBase("esp32c6")).toBe("0x60002000");
+  it("points the c6 at the flash controller", () => {
+    expect(spiBase("esp32c6")).toBe("0x60003000");
   });
 
-  it("does not patch a chip the library gets right", () => {
-    // The C3 genuinely is 0x60002000 in both tools, so it must not be listed.
-    expect(spiBase("esp32c3")).toBe("0x60002000");
-    expect(SPI_REG_BASE_FIXUP.esp32c3).toBeUndefined();
-  });
-
-  it("patches the c5 and c6 to the flash controller", () => {
-    expect(SPI_REG_BASE_FIXUP.esp32c5).toBe(0x60003000);
-    expect(SPI_REG_BASE_FIXUP.esp32c6).toBe(0x60003000);
-  });
-
-  it("covers the c5 by its own entry, not by inheritance", () => {
-    // The C5 class declares no SPI_REG_BASE of its own, so nothing would fix
-    // it if only the C6 were listed -- our fixup is applied per resolved
-    // target, not per class hierarchy.
+  it("gives the c5 the c6 value by inheritance", () => {
     expect(spiBase("esp32c5")).toBeUndefined();
-    expect(SPI_REG_BASE_FIXUP.esp32c5).toBeDefined();
+    const c5 = readFileSync(
+      new URL(
+        "../node_modules/esptool-js/lib/targets/esp32c5.js",
+        import.meta.url,
+      ),
+      "utf8",
+    );
+    expect(c5).toMatch(/extends ESP32C6ROM/);
+  });
+
+  it("keeps the c3 on its own 0x60002000", () => {
+    expect(spiBase("esp32c3")).toBe("0x60002000");
   });
 });

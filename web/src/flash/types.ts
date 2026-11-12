@@ -7,10 +7,14 @@ export type Target =
   | "esp32c5"
   | "esp32c6"
   | "esp32c61"
+  | "esp32e22"
   | "esp32h2"
+  | "esp32h21"
+  | "esp32h4"
   | "esp32p4"
   | "esp32s2"
   | "esp32s3"
+  | "esp32s31"
   | "esp8266";
 
 export type FlashStep =
