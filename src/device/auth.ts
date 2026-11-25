@@ -56,6 +56,10 @@ export class KeyStore {
   private readonly lockouts = new Map<DeviceId, number>();
   /** Device -> cycle token of the last attempt, so we try at most once. */
   private readonly attempted = new Set<DeviceId>();
+  /** Device -> the key it answered 401 to, so it is not sent again. */
+  private readonly refused = new Map<DeviceId, string>();
+  /** Device -> the key it last accepted. */
+  private readonly accepted = new Map<DeviceId, string>();
 
   constructor(options: KeyStoreOptions) {
     this.path = join(options.dataDir, "keys.json");
@@ -196,7 +200,38 @@ export class KeyStore {
   }
 
   /** A working key clears the lockout bookkeeping for that device. */
-  noteSuccess(id: DeviceId): void {
+  noteSuccess(id: DeviceId, key?: string): void {
     this.lockouts.delete(id);
+    this.refused.delete(id);
+    if (key !== undefined) this.accepted.set(id, key);
+  }
+
+  /**
+   * The device answered 401 to `key`: the one that was sent, which a key
+   * change while the request was in flight can have made a different one
+   * from the current key.
+   */
+  noteRefused(id: DeviceId, key: string): void {
+    if (this.accepted.get(id) === key) this.accepted.delete(id);
+    this.refused.set(id, key);
+  }
+
+  /** Has the device accepted `key` before? */
+  keyAccepted(id: DeviceId, key: string): boolean {
+    return this.accepted.get(id) === key;
+  }
+
+  /**
+   * The key to send on another plugin's behalf, if it may be sent now: not
+   * while the device is locked out, and not a key it already refused. Each
+   * refusal is a strike towards the device's lockout, and a mirror polling
+   * once a second would earn one within seconds. A different key (a new
+   * fleet key, one entered by hand) is sent again.
+   */
+  keyToSend(id: DeviceId): string | undefined {
+    if (this.lockedOutUntil(id) !== undefined) return undefined;
+    const key = this.keyFor(id);
+    if (key === undefined || this.refused.get(id) === key) return undefined;
+    return key;
   }
 }

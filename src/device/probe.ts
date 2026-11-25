@@ -122,10 +122,11 @@ export async function probeDevice(options: ProbeOptions): Promise<ProbeResult> {
 
     // This is the device's one authenticated attempt for this cycle.
     keys.noteAttempt(identity.id);
+    const sentKey = keys.keyFor(identity.id);
     const authed = new DeviceClient({
       address,
       port: identity.port,
-      key: keys.keyFor(identity.id),
+      key: sentKey,
       timeoutMs: options.timeoutMs,
       fetchImpl: options.fetchImpl,
     });
@@ -143,7 +144,7 @@ export async function probeDevice(options: ProbeOptions): Promise<ProbeResult> {
       // key-protected device silently missing both is exactly the divergence
       // that duplicating this caused once already.
       await enrich(snapshot, authed);
-      keys.noteSuccess(identity.id);
+      keys.noteSuccess(identity.id, sentKey);
       return { ok: true, address, snapshot, auth: "authorized" };
     } catch (error) {
       if (error instanceof DeviceHttpError) {
@@ -160,6 +161,11 @@ export async function probeDevice(options: ProbeOptions): Promise<ProbeResult> {
         }
         if (error.status === 401 || error.status === 403) {
           // Do NOT try another key. That is how a device gets locked out.
+          // Only a 401 judges the key; espOS's 403 is about the Origin or a
+          // build that wants a key set at all.
+          if (error.status === 401 && sentKey !== undefined) {
+            keys.noteRefused(identity.id, sentKey);
+          }
           return {
             ok: true,
             address,

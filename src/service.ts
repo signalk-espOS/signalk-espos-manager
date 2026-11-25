@@ -11,6 +11,11 @@ import type { ManagerSettings } from "./config.js";
 import { PLUGIN_ID, PUBLIC_FW_BASE } from "./config.js";
 import { KeyStore } from "./device/auth.js";
 import { FleetPoller } from "./fleet/poller.js";
+import {
+  BROKER_GLOBAL,
+  createBroker,
+  type EsposDeviceBroker,
+} from "./broker/index.js";
 import { boardSettled, FleetState, snapshotTarget } from "./fleet/state.js";
 import { publishFleetDeltas } from "./fleet/deltas.js";
 import { DayNightPublisher } from "./sky/dayNight.js";
@@ -60,6 +65,7 @@ import {
 
 export class ManagerService {
   readonly fleet = new FleetState();
+  private broker?: EsposDeviceBroker;
   private keys?: KeyStore;
   private poller?: FleetPoller;
   private settings?: ManagerSettings;
@@ -134,6 +140,7 @@ export class ManagerService {
       this.keys = new KeyStore({ dataDir });
       await this.keys.load();
       this.keys.setFleetKey(settings.auth.fleetKey ?? "");
+      if (!settings.demo) this.publishBroker();
 
       this.orchestrator = new OtaOrchestrator({
         maxConcurrent: settings.ota.maxConcurrent,
@@ -224,6 +231,7 @@ export class ManagerService {
     this.dayNight = undefined;
     await this.poller?.stop();
     this.poller = undefined;
+    this.withdrawBroker();
     this.keys = undefined;
     this.store = undefined;
     this.registry = undefined;
@@ -622,6 +630,33 @@ export class ManagerService {
         },
       );
     });
+  }
+
+  /** Offer other plugins requests to our devices with their keys (broker/). */
+  private publishBroker(): void {
+    // Bound to this run's key store: a broker another plugin kept from an
+    // earlier run must not reach the keys of a later one.
+    const keys = this.keys;
+    const broker = createBroker({
+      isCurrent: () => this.broker === broker,
+      devices: () => (this.isDemo ? [] : this.fleet.list()),
+      keyToSend: (id) => keys?.keyToSend(id),
+      keyAccepted: (id, key) => keys?.keyAccepted(id, key) ?? false,
+      noteRefused: (id, key) => keys?.noteRefused(id, key),
+      noteSuccess: (id, key) => keys?.noteSuccess(id, key),
+      markLockedOut: (id, retryAfterS) => keys?.markLockedOut(id, retryAfterS),
+    });
+    this.broker = broker;
+    (globalThis as Record<string, unknown>)[BROKER_GLOBAL] = broker;
+  }
+
+  private withdrawBroker(): void {
+    const g = globalThis as Record<string, unknown>;
+    // Only our own: a manager loaded twice must not remove the other's.
+    if (this.broker !== undefined && g[BROKER_GLOBAL] === this.broker) {
+      delete g[BROKER_GLOBAL];
+    }
+    this.broker = undefined;
   }
 
   /** A client for one device, with its key attached when we have one. */

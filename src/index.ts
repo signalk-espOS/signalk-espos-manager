@@ -18,6 +18,7 @@ import { registerRoutes, type PluginRouter } from "./api/routes.js";
 export { ManagerService };
 export * from "./config.js";
 export * from "./types.js";
+export type { DeviceRequestInit, EsposDeviceBroker } from "./broker/index.js";
 
 export default function createPlugin(app: ServerAPI): Plugin {
   let service: ManagerService | undefined;
