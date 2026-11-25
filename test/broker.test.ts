@@ -12,7 +12,7 @@ function device(id: string, hostname: string, address: string): DeviceRecord {
   } as unknown as DeviceRecord;
 }
 
-const panel = device("ab12", "espos-ab12", "192.168.0.167");
+const panel = device("ab12", "espos-ab12", "192.0.2.10");
 
 function deps(fetchImpl: typeof fetch, withKey = true, accepted = true) {
   const key = withKey ? "k1" : undefined;
@@ -22,7 +22,6 @@ function deps(fetchImpl: typeof fetch, withKey = true, accepted = true) {
     keyToSend: vi.fn(() => key),
     keyAccepted: vi.fn(() => accepted),
     noteRefused: vi.fn(),
-    noteSuccess: vi.fn(),
     markLockedOut: vi.fn(),
     fetchImpl,
   };
@@ -35,13 +34,13 @@ function answer(status: number, body: unknown = {}, headers = {}): Response {
 describe("deviceForUrl", () => {
   it("matches by address, hostname and .local name", () => {
     const list = [panel];
-    expect(deviceForUrl(list, "http://192.168.0.167/hello")).toBe(panel);
+    expect(deviceForUrl(list, "http://192.0.2.10/hello")).toBe(panel);
     expect(deviceForUrl(list, "http://espos-ab12/layout")).toBe(panel);
     expect(deviceForUrl(list, "http://ESPOS-AB12.local:80/hello")).toBe(panel);
   });
 
   it("ignores other hosts and broken URLs", () => {
-    expect(deviceForUrl([panel], "http://192.168.0.10/")).toBeUndefined();
+    expect(deviceForUrl([panel], "http://192.0.2.20/")).toBeUndefined();
     expect(deviceForUrl([panel], "not a url")).toBeUndefined();
   });
 });
@@ -54,7 +53,7 @@ describe("broker", () => {
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 
-  it("adds the device's key and notes success", async () => {
+  it("adds the device's key", async () => {
     const fetchImpl = vi.fn<typeof fetch>(async () => answer(200));
     const d = deps(fetchImpl);
     const res = await createBroker(d).request(
@@ -71,7 +70,6 @@ describe("broker", () => {
       "Content-Type": "application/json",
       Authorization: "Bearer k1",
     });
-    expect(d.noteSuccess).toHaveBeenCalledWith("ab12", "k1");
   });
 
   it("keeps an Authorization header the caller set", async () => {
@@ -149,6 +147,27 @@ describe("broker, more", () => {
     expect(d.noteRefused).not.toHaveBeenCalled();
   });
 
+  it("stops waiting for the gate when its caller aborts", async () => {
+    let release: (r: Response) => void = () => undefined;
+    const fetchImpl = vi.fn<typeof fetch>(
+      () =>
+        new Promise<Response>((resolve) => {
+          release = resolve;
+        }),
+    );
+    const broker = createBroker(deps(fetchImpl, true, false));
+    const first = broker.request("http://espos-ab12/screenshot");
+    const controller = new AbortController();
+    const second = broker.request("http://espos-ab12/screenshot", {
+      signal: controller.signal,
+    });
+    controller.abort();
+    await expect(second).rejects.toBeDefined();
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    release(answer(200));
+    expect((await first)?.status).toBe(200);
+  });
+
   it("tests an untried key with one request at a time", async () => {
     let refused = false;
     const sent: Array<string | undefined> = [];
@@ -221,6 +240,9 @@ describe("KeyStore.keyToSend", () => {
     expect(keys.keyAccepted("ab12", "own")).toBe(true);
     keys.noteRefused("ab12", "own");
     expect(keys.keyAccepted("ab12", "own")).toBe(false);
+    expect(keys.keyToSend("ab12")).toBeUndefined();
+    // A late refusal of the old key keeps the current one refused.
+    keys.noteRefused("ab12", "fleet");
     expect(keys.keyToSend("ab12")).toBeUndefined();
   });
 });

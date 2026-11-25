@@ -166,8 +166,8 @@ resolves to the `fetch()` Response, or to `undefined` for a host that is no
 espOS device the manager knows (`EsposDeviceBroker` in `src/broker/`). A key
 the device answered 401 to is not sent again until the key changes, no key
 is sent while the device throttles attempts (a 429 naming
-`too_many_attempts`), and a key the device has not accepted yet is tried by
-one request at a time.
+`too_many_attempts`), and a key the manager's own probe has not seen accepted
+yet is tried by one request at a time.
 
 ## Day and night
 

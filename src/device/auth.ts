@@ -56,8 +56,12 @@ export class KeyStore {
   private readonly lockouts = new Map<DeviceId, number>();
   /** Device -> cycle token of the last attempt, so we try at most once. */
   private readonly attempted = new Set<DeviceId>();
-  /** Device -> the key it answered 401 to, so it is not sent again. */
-  private readonly refused = new Map<DeviceId, string>();
+  /**
+   * Device -> the keys it answered 401 to, so none is sent again. Kept per
+   * key: a late refusal of an old key must not replace that of the current
+   * one.
+   */
+  private readonly refused = new Map<DeviceId, Set<string>>();
   /** Device -> the key it last accepted. */
   private readonly accepted = new Map<DeviceId, string>();
 
@@ -202,8 +206,10 @@ export class KeyStore {
   /** A working key clears the lockout bookkeeping for that device. */
   noteSuccess(id: DeviceId, key?: string): void {
     this.lockouts.delete(id);
-    this.refused.delete(id);
-    if (key !== undefined) this.accepted.set(id, key);
+    if (key !== undefined) {
+      this.refused.get(id)?.delete(key);
+      this.accepted.set(id, key);
+    }
   }
 
   /**
@@ -213,7 +219,9 @@ export class KeyStore {
    */
   noteRefused(id: DeviceId, key: string): void {
     if (this.accepted.get(id) === key) this.accepted.delete(id);
-    this.refused.set(id, key);
+    let keys = this.refused.get(id);
+    if (keys === undefined) this.refused.set(id, (keys = new Set()));
+    keys.add(key);
   }
 
   /** Has the device accepted `key` before? */
@@ -231,7 +239,9 @@ export class KeyStore {
   keyToSend(id: DeviceId): string | undefined {
     if (this.lockedOutUntil(id) !== undefined) return undefined;
     const key = this.keyFor(id);
-    if (key === undefined || this.refused.get(id) === key) return undefined;
+    if (key === undefined || this.refused.get(id)?.has(key) === true) {
+      return undefined;
+    }
     return key;
   }
 }

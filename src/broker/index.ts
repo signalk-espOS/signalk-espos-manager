@@ -84,7 +84,6 @@ export interface BrokerDeps {
   keyToSend: (id: string) => string | undefined;
   keyAccepted: (id: string, key: string) => boolean;
   noteRefused: (id: string, key: string) => void;
-  noteSuccess: (id: string, key: string) => void;
   markLockedOut: (id: string, retryAfterS?: number) => void;
   fetchImpl?: typeof fetch;
 }
@@ -114,6 +113,28 @@ async function isAuthThrottle(response: Response): Promise<boolean> {
   }
 }
 
+function waitOrAbort(
+  pending: Promise<unknown>,
+  signal?: AbortSignal,
+): Promise<void> {
+  if (signal === undefined) return pending.then(() => undefined);
+  if (signal.aborted) return Promise.reject(abortReason(signal));
+  return new Promise<void>((resolve, reject) => {
+    const onAbort = (): void => {
+      reject(abortReason(signal));
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+    void pending.then(() => {
+      signal.removeEventListener("abort", onAbort);
+      resolve();
+    });
+  });
+}
+
+function abortReason(signal: AbortSignal): unknown {
+  return signal.reason ?? new DOMException("aborted", "AbortError");
+}
+
 export function createBroker(deps: BrokerDeps): EsposDeviceBroker {
   const fetchImpl = deps.fetchImpl ?? fetch;
   // Device -> the request testing a key the device has not accepted yet.
@@ -129,6 +150,7 @@ export function createBroker(deps: BrokerDeps): EsposDeviceBroker {
    */
   const claimKey = async (
     id: string,
+    signal?: AbortSignal,
   ): Promise<{ key?: string; done?: () => void }> => {
     for (;;) {
       const key = deps.keyToSend(id);
@@ -148,7 +170,9 @@ export function createBroker(deps: BrokerDeps): EsposDeviceBroker {
           },
         };
       }
-      await pending;
+      // Abort-aware: a request whose caller gave up stops waiting, and
+      // leaves the gate with the request that holds it.
+      await waitOrAbort(pending, signal);
     }
   };
 
@@ -163,7 +187,7 @@ export function createBroker(deps: BrokerDeps): EsposDeviceBroker {
       const callerAuth = Object.keys(headers).some(
         (k) => k.toLowerCase() === "authorization",
       );
-      const claim = callerAuth ? {} : await claimKey(id);
+      const claim = callerAuth ? {} : await claimKey(id, init.signal);
       const key = claim.key;
       if (key !== undefined) headers.Authorization = `Bearer ${key}`;
       try {
@@ -177,7 +201,10 @@ export function createBroker(deps: BrokerDeps): EsposDeviceBroker {
           if (response.status === 401) deps.noteRefused(id, key);
           else if (response.status === 429 && (await isAuthThrottle(response)))
             deps.markLockedOut(id, retryAfter(response));
-          else if (response.ok) deps.noteSuccess(id, key);
+          // A 2xx is no proof: a public endpoint (/api/v1/system/ping,
+          // /hello) answers any key. Only the poller's protected probe marks
+          // a key accepted, so until then requests keep testing it one by
+          // one.
         }
         return response;
       } finally {

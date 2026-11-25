@@ -643,7 +643,6 @@ export class ManagerService {
       keyToSend: (id) => keys?.keyToSend(id),
       keyAccepted: (id, key) => keys?.keyAccepted(id, key) ?? false,
       noteRefused: (id, key) => keys?.noteRefused(id, key),
-      noteSuccess: (id, key) => keys?.noteSuccess(id, key),
       markLockedOut: (id, retryAfterS) => keys?.markLockedOut(id, retryAfterS),
     });
     this.broker = broker;
