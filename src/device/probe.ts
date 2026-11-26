@@ -123,7 +123,7 @@ export async function probeDevice(options: ProbeOptions): Promise<ProbeResult> {
     // This is the device's one authenticated attempt for this cycle.
     keys.noteAttempt(identity.id);
     const sentKey = keys.keyFor(identity.id);
-    const since = keys.refusalMark();
+    const since = keys.verdictMark();
     const authed = new DeviceClient({
       address,
       port: identity.port,

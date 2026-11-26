@@ -256,14 +256,47 @@ describe("KeyStore.keyToSend", () => {
     });
     await keys.load();
     keys.setFleetKey("fleet");
-    const inFlight = keys.refusalMark();
+    const inFlight = keys.verdictMark();
     keys.noteRefused("ab12", "fleet");
     keys.noteSuccess("ab12", "fleet", inFlight);
     expect(keys.keyAccepted("ab12", "fleet")).toBe(false);
     expect(keys.keyToSend("ab12")).toBeUndefined();
     // A probe that starts after the refusal may accept the key again.
-    keys.noteSuccess("ab12", "fleet", keys.refusalMark());
+    keys.noteSuccess("ab12", "fleet", keys.verdictMark());
     expect(keys.keyAccepted("ab12", "fleet")).toBe(true);
     expect(keys.keyToSend("ab12")).toBe("fleet");
+  });
+  it("keeps a lockout that lands while a probe is in flight", async () => {
+    const { KeyStore } = await import("../src/device/auth.js");
+    const { mkdtemp } = await import("node:fs/promises");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const keys = new KeyStore({
+      dataDir: await mkdtemp(join(tmpdir(), "broker-")),
+    });
+    await keys.load();
+    keys.setFleetKey("fleet");
+    const inFlight = keys.verdictMark();
+    keys.markLockedOut("ab12", 30);
+    keys.noteSuccess("ab12", "fleet", inFlight);
+    expect(keys.lockedOutUntil("ab12")).toBeDefined();
+    expect(keys.keyToSend("ab12")).toBeUndefined();
+  });
+
+  it("gives a key the broker had refused no second strike that cycle", async () => {
+    const { KeyStore } = await import("../src/device/auth.js");
+    const { mkdtemp } = await import("node:fs/promises");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const keys = new KeyStore({
+      dataDir: await mkdtemp(join(tmpdir(), "broker-")),
+    });
+    await keys.load();
+    keys.setFleetKey("fleet");
+    keys.beginCycle();
+    keys.noteRefused("ab12", "fleet");
+    expect(keys.canAttempt("ab12")).toBe(false);
+    keys.beginCycle();
+    expect(keys.canAttempt("ab12")).toBe(true);
   });
 });

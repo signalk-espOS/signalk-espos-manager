@@ -62,7 +62,15 @@ export class KeyStore {
    * key must not replace that of the current one.
    */
   private readonly refused = new Map<DeviceId, Map<string, number>>();
-  private refusals = 0;
+  /** Device -> sequence number of its lockout, beside `lockouts`. */
+  private readonly lockoutSeq = new Map<DeviceId, number>();
+  /**
+   * Counts refusals and lockouts, so a request can tell a verdict recorded
+   * while it was in flight from one it saw before it started.
+   */
+  private verdicts = 0;
+  /** {@link verdicts} when the poll cycle began. */
+  private cycleMark = 0;
   /** Device -> the key it last accepted. */
   private readonly accepted = new Map<DeviceId, string>();
 
@@ -169,6 +177,7 @@ export class KeyStore {
   markLockedOut(id: DeviceId, retryAfterS?: number): number {
     const until = this.now() + (retryAfterS ?? DEFAULT_LOCKOUT_S) * 1000;
     this.lockouts.set(id, until);
+    this.lockoutSeq.set(id, ++this.verdicts);
     return until;
   }
 
@@ -191,6 +200,12 @@ export class KeyStore {
   canAttempt(id: DeviceId): boolean {
     if (this.lockedOutUntil(id) !== undefined) return false;
     if (this.attempted.has(id)) return false;
+    // A key refused since this cycle began has had its strike: the broker
+    // sent it on another plugin's behalf. The next cycle tries it again.
+    const key = this.keyFor(id);
+    const refusedAt =
+      key === undefined ? undefined : this.refused.get(id)?.get(key);
+    if (refusedAt !== undefined && refusedAt > this.cycleMark) return false;
     return this.hasKey(id);
   }
 
@@ -202,21 +217,26 @@ export class KeyStore {
   /** Called once per poll cycle: everyone gets one attempt again. */
   beginCycle(): void {
     this.attempted.clear();
+    this.cycleMark = this.verdicts;
   }
 
   /** Mark taken before a probe, for {@link noteSuccess}. */
-  refusalMark(): number {
-    return this.refusals;
+  verdictMark(): number {
+    return this.verdicts;
   }
 
   /**
    * A working key clears the lockout bookkeeping for that device. With
-   * `since` (a {@link refusalMark} taken before the request), a refusal of
-   * the same key recorded while the request was in flight stands: the device
-   * refused it later than it accepted it.
+   * `since` (a {@link verdictMark} taken before the request), a lockout or a
+   * refusal of the same key recorded while the request was in flight stands:
+   * the device gave it later than it accepted the key.
    */
   noteSuccess(id: DeviceId, key?: string, since?: number): void {
-    this.lockouts.delete(id);
+    const lockedAt = this.lockoutSeq.get(id);
+    if (since === undefined || lockedAt === undefined || lockedAt <= since) {
+      this.lockouts.delete(id);
+      this.lockoutSeq.delete(id);
+    }
     if (key === undefined) return;
     const refusedAt = this.refused.get(id)?.get(key);
     if (since !== undefined && refusedAt !== undefined && refusedAt > since) {
@@ -235,7 +255,7 @@ export class KeyStore {
     if (this.accepted.get(id) === key) this.accepted.delete(id);
     let keys = this.refused.get(id);
     if (keys === undefined) this.refused.set(id, (keys = new Map()));
-    keys.set(key, ++this.refusals);
+    keys.set(key, ++this.verdicts);
   }
 
   /** Has the device accepted `key` before? */
