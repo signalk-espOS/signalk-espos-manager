@@ -144,7 +144,7 @@ export async function probeDevice(options: ProbeOptions): Promise<ProbeResult> {
       // hardware.board onto the snapshot and reads the ota config, and a
       // key-protected device silently missing both is exactly the divergence
       // that duplicating this caused once already.
-      await enrich(snapshot, authed);
+      await enrich(snapshot, authed, true);
       keys.noteSuccess(identity.id, sentKey, since);
       // A broker request can have been throttled while enrich() ran; that
       // lockout outlives this success, and the device must read as such.
@@ -223,11 +223,26 @@ function promoteBoard(snapshot: DeviceSnapshot): void {
   }
 }
 
-/** Best-effort extras; a failure here must not fail the probe. */
+/**
+ * Best-effort extras; a failure here must not fail the probe. With a key,
+ * except a refusal or a throttle: systemInfo() took the key, so a 401 or 429
+ * now is a verdict on it the key store has to record (the key changed, or a
+ * broker request was throttled meanwhile).
+ */
 async function enrich(
   snapshot: DeviceSnapshot,
   client: DeviceClient,
+  keyed = false,
 ): Promise<void> {
+  const verdict = (error: unknown): void => {
+    if (
+      keyed &&
+      error instanceof DeviceHttpError &&
+      (error.status === 401 || error.status === 429)
+    ) {
+      throw error;
+    }
+  };
   try {
     snapshot.info = await client.systemInfo();
     // The board decides whether an update may be offered at all, and the
@@ -241,12 +256,14 @@ async function enrich(
     // auth only), so the hint is a fallback for a future firmware that adds
     // one, and for a device whose info we cannot read.
     promoteBoard(snapshot);
-  } catch {
+  } catch (error) {
+    verdict(error);
     // Older or busy firmware; ping already told us it is alive.
   }
   try {
     snapshot.ota = await client.otaStatus();
-  } catch {
+  } catch (error) {
+    verdict(error);
     // Same.
   }
   try {
@@ -271,7 +288,8 @@ async function enrich(
           typeof o["manifest_url"] === "string" ? o["manifest_url"] : undefined,
       };
     }
-  } catch {
+  } catch (error) {
+    verdict(error);
     // A key-protected device we are not authorized for, or firmware without
     // the endpoint. The repair check stays quiet rather than guessing.
   }
