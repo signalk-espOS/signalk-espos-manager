@@ -196,6 +196,12 @@ export function createBroker(deps: BrokerDeps): EsposDeviceBroker {
           : await claimKey(id, init.signal);
       const key = claim.key;
       if (key !== undefined) headers.Authorization = `Bearer ${key}`;
+      // The wait for a key test can outlast this broker: a stopped manager
+      // sends nothing more with the key store it left behind.
+      if (!deps.isCurrent()) {
+        claim.done?.();
+        return undefined;
+      }
       try {
         const response = await fetchImpl(url, {
           method: init.method ?? "GET",

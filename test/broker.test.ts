@@ -200,6 +200,26 @@ describe("broker, more", () => {
     expect(d.noteRefused).toHaveBeenCalledTimes(1);
   });
 
+  it("sends nothing once the broker is withdrawn during a key test", async () => {
+    let release: (r: Response) => void = () => undefined;
+    const fetchImpl = vi.fn<typeof fetch>(
+      () =>
+        new Promise<Response>((resolve) => {
+          release = resolve;
+        }),
+    );
+    const d = deps(fetchImpl, true, false);
+    const broker = createBroker(d);
+    const first = broker.request("http://espos-ab12/layout");
+    const second = broker.request("http://espos-ab12/layout");
+    await new Promise((r) => setTimeout(r, 10));
+    d.isCurrent.mockReturnValue(false);
+    release(answer(200));
+    expect((await first)?.status).toBe(200);
+    expect(await second).toBeUndefined();
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
   it("sends an open device's requests side by side and without a key", async () => {
     const sent: Array<string | undefined> = [];
     const fetchImpl = vi.fn<typeof fetch>((_url, init) => {

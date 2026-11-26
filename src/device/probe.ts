@@ -146,6 +146,19 @@ export async function probeDevice(options: ProbeOptions): Promise<ProbeResult> {
       // that duplicating this caused once already.
       await enrich(snapshot, authed);
       keys.noteSuccess(identity.id, sentKey, since);
+      // A broker request can have been throttled while enrich() ran; that
+      // lockout outlives this success, and the device must read as such.
+      const lockedOutUntil = keys.lockedOutUntil(identity.id);
+      if (lockedOutUntil !== undefined) {
+        return {
+          ok: true,
+          address,
+          snapshot,
+          auth: "locked-out",
+          lockedOutUntil,
+          error: "device is throttling us after failed key attempts",
+        };
+      }
       return { ok: true, address, snapshot, auth: "authorized" };
     } catch (error) {
       if (error instanceof DeviceHttpError) {
