@@ -245,4 +245,25 @@ describe("KeyStore.keyToSend", () => {
     keys.noteRefused("ab12", "fleet");
     expect(keys.keyToSend("ab12")).toBeUndefined();
   });
+
+  it("keeps a refusal that lands while a probe is in flight", async () => {
+    const { KeyStore } = await import("../src/device/auth.js");
+    const { mkdtemp } = await import("node:fs/promises");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const keys = new KeyStore({
+      dataDir: await mkdtemp(join(tmpdir(), "broker-")),
+    });
+    await keys.load();
+    keys.setFleetKey("fleet");
+    const inFlight = keys.refusalMark();
+    keys.noteRefused("ab12", "fleet");
+    keys.noteSuccess("ab12", "fleet", inFlight);
+    expect(keys.keyAccepted("ab12", "fleet")).toBe(false);
+    expect(keys.keyToSend("ab12")).toBeUndefined();
+    // A probe that starts after the refusal may accept the key again.
+    keys.noteSuccess("ab12", "fleet", keys.refusalMark());
+    expect(keys.keyAccepted("ab12", "fleet")).toBe(true);
+    expect(keys.keyToSend("ab12")).toBe("fleet");
+  });
 });

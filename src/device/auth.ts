@@ -57,11 +57,12 @@ export class KeyStore {
   /** Device -> cycle token of the last attempt, so we try at most once. */
   private readonly attempted = new Set<DeviceId>();
   /**
-   * Device -> the keys it answered 401 to, so none is sent again. Kept per
-   * key: a late refusal of an old key must not replace that of the current
-   * one.
+   * Device -> the keys it answered 401 to, so none is sent again, each with
+   * the refusal's sequence number. Kept per key: a late refusal of an old
+   * key must not replace that of the current one.
    */
-  private readonly refused = new Map<DeviceId, Set<string>>();
+  private readonly refused = new Map<DeviceId, Map<string, number>>();
+  private refusals = 0;
   /** Device -> the key it last accepted. */
   private readonly accepted = new Map<DeviceId, string>();
 
@@ -203,13 +204,26 @@ export class KeyStore {
     this.attempted.clear();
   }
 
-  /** A working key clears the lockout bookkeeping for that device. */
-  noteSuccess(id: DeviceId, key?: string): void {
+  /** Mark taken before a probe, for {@link noteSuccess}. */
+  refusalMark(): number {
+    return this.refusals;
+  }
+
+  /**
+   * A working key clears the lockout bookkeeping for that device. With
+   * `since` (a {@link refusalMark} taken before the request), a refusal of
+   * the same key recorded while the request was in flight stands: the device
+   * refused it later than it accepted it.
+   */
+  noteSuccess(id: DeviceId, key?: string, since?: number): void {
     this.lockouts.delete(id);
-    if (key !== undefined) {
-      this.refused.get(id)?.delete(key);
-      this.accepted.set(id, key);
+    if (key === undefined) return;
+    const refusedAt = this.refused.get(id)?.get(key);
+    if (since !== undefined && refusedAt !== undefined && refusedAt > since) {
+      return;
     }
+    this.refused.get(id)?.delete(key);
+    this.accepted.set(id, key);
   }
 
   /**
@@ -220,8 +234,8 @@ export class KeyStore {
   noteRefused(id: DeviceId, key: string): void {
     if (this.accepted.get(id) === key) this.accepted.delete(id);
     let keys = this.refused.get(id);
-    if (keys === undefined) this.refused.set(id, (keys = new Set()));
-    keys.add(key);
+    if (keys === undefined) this.refused.set(id, (keys = new Map()));
+    keys.set(key, ++this.refusals);
   }
 
   /** Has the device accepted `key` before? */
