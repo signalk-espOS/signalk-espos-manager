@@ -159,6 +159,17 @@ export async function probeDevice(options: ProbeOptions): Promise<ProbeResult> {
           error: "device is throttling us after failed key attempts",
         };
       }
+      // Likewise a refusal of this key recorded meanwhile: noteSuccess kept
+      // it, and the key is not one the device takes now.
+      if (sentKey !== undefined && !keys.keyAccepted(identity.id, sentKey)) {
+        return {
+          ok: true,
+          address,
+          snapshot,
+          auth: "needs-key",
+          error: "the stored key was rejected",
+        };
+      }
       return { ok: true, address, snapshot, auth: "authorized" };
     } catch (error) {
       if (error instanceof DeviceHttpError) {
