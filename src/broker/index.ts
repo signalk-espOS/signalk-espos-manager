@@ -41,10 +41,11 @@ export interface EsposDeviceBroker {
    * device's answer whatever its status, or a rejection when the device
    * does not answer. The key is left out, and the device answers 401, while
    * the device is throttling key attempts (a 429 naming
-   * `too_many_attempts`) and after it answered 401 to the key, until a
-   * different key is set. A key the device has not accepted yet is tested
-   * by one request at a time. An Authorization header the caller set is
-   * kept.
+   * `too_many_attempts`), and after it answered 401 to the key until the
+   * manager's own probe sees the device accept it or a different key is
+   * set. A key the device has not accepted yet is tested by one request at a
+   * time; a device without a key gets none. An Authorization header the
+   * caller set is kept.
    */
   request(url: string, init?: DeviceRequestInit): Promise<Response | undefined>;
 }
@@ -187,7 +188,12 @@ export function createBroker(deps: BrokerDeps): EsposDeviceBroker {
       const callerAuth = Object.keys(headers).some(
         (k) => k.toLowerCase() === "authorization",
       );
-      const claim = callerAuth ? {} : await claimKey(id, init.signal);
+      // An open device takes no key and counts no strikes, so its requests
+      // neither carry one nor queue behind a key test.
+      const claim =
+        callerAuth || device.auth === "open"
+          ? {}
+          : await claimKey(id, init.signal);
       const key = claim.key;
       if (key !== undefined) headers.Authorization = `Bearer ${key}`;
       try {

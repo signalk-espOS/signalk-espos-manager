@@ -197,6 +197,20 @@ describe("probeDevice against a keyed device", () => {
     expect(device.authAttempts).toBe(afterFirst);
   });
 
+  it("withholds a key the probe saw refused, and lends one it saw accepted", async () => {
+    device = await startFakeDevice({ key: "the-right-key" });
+    const keys = await freshKeys();
+    keys.setFleetKey("the-wrong-key");
+    await probeDevice({ identity: identityFor(device), keys });
+    expect(keys.keyToSend("2be9")).toBeUndefined();
+
+    keys.setFleetKey("the-right-key");
+    keys.beginCycle();
+    await probeDevice({ identity: identityFor(device), keys });
+    expect(keys.keyAccepted("2be9", "the-right-key")).toBe(true);
+    expect(keys.keyToSend("2be9")).toBe("the-right-key");
+  });
+
   it("still says needs-key when no key is held at all", async () => {
     device = await startFakeDevice({ key: "some-key" });
     const keys = await freshKeys();

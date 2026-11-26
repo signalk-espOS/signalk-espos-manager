@@ -164,11 +164,13 @@ the designer. For plugin authors: while the manager runs,
 espOS device it names, by address or hostname, with that device's key, and
 resolves to the `fetch()` Response, or to `undefined` for a host that is no
 espOS device the manager knows (`EsposDeviceBroker` in `src/broker/`). A key
-the device answered 401 to is not sent again until the key changes, no key
-is sent while the device throttles attempts (a 429 naming
-`too_many_attempts`), and the broker sends a key the manager's own probe has
-not seen accepted yet with one of its requests at a time. That probe keeps
-its own schedule, so it can try the same key alongside.
+the device answered 401 to is not sent again until the manager's own probe
+sees the device accept it or a different key is set, no key is sent while
+the device throttles attempts (a 429 naming `too_many_attempts`), and the
+broker sends a key that probe has not seen accepted yet with one of its
+requests at a time. That probe keeps its own schedule, so it can try the
+same key alongside. A device without a key gets none, and its requests do
+not wait for each other.
 
 ## Day and night
 

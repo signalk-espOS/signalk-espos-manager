@@ -199,6 +199,21 @@ describe("broker, more", () => {
     expect(sent).toEqual(["Bearer k1", undefined, undefined]);
     expect(d.noteRefused).toHaveBeenCalledTimes(1);
   });
+
+  it("sends an open device's requests side by side and without a key", async () => {
+    const sent: Array<string | undefined> = [];
+    const fetchImpl = vi.fn<typeof fetch>((_url, init) => {
+      sent.push((init?.headers as Record<string, string>).Authorization);
+      return new Promise<Response>(() => undefined);
+    });
+    const d = deps(fetchImpl, true, false);
+    d.devices = () => [{ ...panel, auth: "open" } as DeviceRecord];
+    const broker = createBroker(d);
+    void broker.request("http://espos-ab12/hello");
+    void broker.request("http://espos-ab12/hello");
+    await new Promise((r) => setTimeout(r, 10));
+    expect(sent).toEqual([undefined, undefined]);
+  });
 });
 
 describe("KeyStore.keyToSend", () => {
