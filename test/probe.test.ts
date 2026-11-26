@@ -132,6 +132,32 @@ describe("probeDevice against a keyed device", () => {
     expect(result.snapshot?.board).toBe(
       "Waveshare ESP32-P4-WIFI6-Touch-LCD-7B",
     );
+    // and the throttle is recorded, not swallowed by the best-effort reads
+    expect(result.auth).toBe("locked-out");
+    expect(keys.lockedOutUntil("2be9")).toBeDefined();
+  });
+
+  it("records a refusal that arrives after the authorization probe", async () => {
+    // The key changes on the device between systemInfo() and enrich().
+    const fake = await startFakeDevice({ key: "secret-key" });
+    device = fake;
+    const keys = await freshKeys();
+    keys.setFleetKey("secret-key");
+    const fetchImpl: typeof fetch = async (input, init) => {
+      const response = await fetch(input, init);
+      if (String(input).endsWith("/api/v1/system/info")) {
+        fake.options.key = "rotated";
+      }
+      return response;
+    };
+
+    const result = await probeDevice({
+      identity: identityFor(fake),
+      keys,
+      fetchImpl,
+    });
+    expect(result.auth).toBe("needs-key");
+    expect(keys.keyAccepted("2be9", "secret-key")).toBe(false);
   });
 
   it("prefers a device's own key over the fleet key", async () => {
@@ -195,6 +221,20 @@ describe("probeDevice against a keyed device", () => {
     const second = await probeDevice({ identity, keys });
     expect(second.auth).toBe("unknown");
     expect(device.authAttempts).toBe(afterFirst);
+  });
+
+  it("withholds a key the probe saw refused, and lends one it saw accepted", async () => {
+    device = await startFakeDevice({ key: "the-right-key" });
+    const keys = await freshKeys();
+    keys.setFleetKey("the-wrong-key");
+    await probeDevice({ identity: identityFor(device), keys });
+    expect(keys.keyToSend("2be9")).toBeUndefined();
+
+    keys.setFleetKey("the-right-key");
+    keys.beginCycle();
+    await probeDevice({ identity: identityFor(device), keys });
+    expect(keys.keyAccepted("2be9", "the-right-key")).toBe(true);
+    expect(keys.keyToSend("2be9")).toBe("the-right-key");
   });
 
   it("still says needs-key when no key is held at all", async () => {

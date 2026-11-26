@@ -122,10 +122,12 @@ export async function probeDevice(options: ProbeOptions): Promise<ProbeResult> {
 
     // This is the device's one authenticated attempt for this cycle.
     keys.noteAttempt(identity.id);
+    const sentKey = keys.keyFor(identity.id);
+    const since = keys.verdictMark();
     const authed = new DeviceClient({
       address,
       port: identity.port,
-      key: keys.keyFor(identity.id),
+      key: sentKey,
       timeoutMs: options.timeoutMs,
       fetchImpl: options.fetchImpl,
     });
@@ -142,8 +144,32 @@ export async function probeDevice(options: ProbeOptions): Promise<ProbeResult> {
       // hardware.board onto the snapshot and reads the ota config, and a
       // key-protected device silently missing both is exactly the divergence
       // that duplicating this caused once already.
-      await enrich(snapshot, authed);
-      keys.noteSuccess(identity.id);
+      await enrich(snapshot, authed, true);
+      keys.noteSuccess(identity.id, sentKey, since);
+      // A broker request can have been throttled while enrich() ran; that
+      // lockout outlives this success, and the device must read as such.
+      const lockedOutUntil = keys.lockedOutUntil(identity.id);
+      if (lockedOutUntil !== undefined) {
+        return {
+          ok: true,
+          address,
+          snapshot,
+          auth: "locked-out",
+          lockedOutUntil,
+          error: "device is throttling us after failed key attempts",
+        };
+      }
+      // Likewise a refusal of this key recorded meanwhile: noteSuccess kept
+      // it, and the key is not one the device takes now.
+      if (sentKey !== undefined && !keys.keyAccepted(identity.id, sentKey)) {
+        return {
+          ok: true,
+          address,
+          snapshot,
+          auth: "needs-key",
+          error: "the stored key was rejected",
+        };
+      }
       return { ok: true, address, snapshot, auth: "authorized" };
     } catch (error) {
       if (error instanceof DeviceHttpError) {
@@ -160,6 +186,11 @@ export async function probeDevice(options: ProbeOptions): Promise<ProbeResult> {
         }
         if (error.status === 401 || error.status === 403) {
           // Do NOT try another key. That is how a device gets locked out.
+          // Only a 401 judges the key; espOS's 403 is about the Origin or a
+          // build that wants a key set at all.
+          if (error.status === 401 && sentKey !== undefined) {
+            keys.noteRefused(identity.id, sentKey);
+          }
           return {
             ok: true,
             address,
@@ -192,11 +223,26 @@ function promoteBoard(snapshot: DeviceSnapshot): void {
   }
 }
 
-/** Best-effort extras; a failure here must not fail the probe. */
+/**
+ * Best-effort extras; a failure here must not fail the probe. With a key,
+ * except a refusal or a throttle: systemInfo() took the key, so a 401 or 429
+ * now is a verdict on it the key store has to record (the key changed, or a
+ * broker request was throttled meanwhile).
+ */
 async function enrich(
   snapshot: DeviceSnapshot,
   client: DeviceClient,
+  keyed = false,
 ): Promise<void> {
+  const verdict = (error: unknown): void => {
+    if (
+      keyed &&
+      error instanceof DeviceHttpError &&
+      (error.status === 401 || error.status === 429)
+    ) {
+      throw error;
+    }
+  };
   try {
     snapshot.info = await client.systemInfo();
     // The board decides whether an update may be offered at all, and the
@@ -210,12 +256,14 @@ async function enrich(
     // auth only), so the hint is a fallback for a future firmware that adds
     // one, and for a device whose info we cannot read.
     promoteBoard(snapshot);
-  } catch {
+  } catch (error) {
+    verdict(error);
     // Older or busy firmware; ping already told us it is alive.
   }
   try {
     snapshot.ota = await client.otaStatus();
-  } catch {
+  } catch (error) {
+    verdict(error);
     // Same.
   }
   try {
@@ -240,7 +288,8 @@ async function enrich(
           typeof o["manifest_url"] === "string" ? o["manifest_url"] : undefined,
       };
     }
-  } catch {
+  } catch (error) {
+    verdict(error);
     // A key-protected device we are not authorized for, or firmware without
     // the endpoint. The repair check stays quiet rather than guessing.
   }
